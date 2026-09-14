@@ -24,6 +24,7 @@ from regulars.bot.onboarding import Onboarding
 from regulars.bot.plan import Plan, PlanError, format_when, vote
 from regulars.bot.store import BotStore, GroupChat
 from regulars.bot.transport import InboundMessage
+from regulars.core.audit import latest_removal
 
 
 @dataclass(frozen=True)
@@ -150,12 +151,9 @@ class Router:
                 Emit(LegibilityRequest(user_id=user)),
             ]
         if _REMOVAL.search(inbound.body):
-            removals = [
-                a for a in self.store.audit_for_user(user) if a.decision_type == "member_removed"
-            ]
-            if not removals:
+            latest = latest_removal(self.store.audit_for_user(user))
+            if latest is None:
                 return [SendMessage(voice.NOT_REMOVED, to_user=user)]
-            latest = max(removals, key=lambda a: a.created_at)
             return [
                 SendMessage(
                     voice.REMOVAL_REASON.format(

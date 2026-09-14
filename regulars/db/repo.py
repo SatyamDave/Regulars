@@ -768,6 +768,57 @@ def audit_for_user(conn: Connection, user_id: str) -> list[AuditEntry]:
     return [_audit_from_row(_row_dict(r)) for r in conn.execute(stmt)]
 
 
+def audit_for_group(conn: Connection, group_id: str) -> list[AuditEntry]:
+    """Every audit row for ``group_id`` (assembly, removals, additions, ...), oldest first.
+
+    Used by ``regulars.ops.audit_cli`` to reconstruct a group's story; ``regulars.bot`` has no
+    equivalent lookup today.
+    """
+    a = schema.audit_log
+    stmt = select(a).where(a.c.group_id == group_id).order_by(a.c.created_at, a.c.id)
+    return [_audit_from_row(_row_dict(r)) for r in conn.execute(stmt)]
+
+
+def audit_decision_counts(
+    conn: Connection, *, zip_code: str | None = None, since: datetime | None = None
+) -> dict[str, int]:
+    """Counts of audit rows by ``decision_type``, for ``regulars.ops.audit_cli stats``.
+
+    ``zip_code`` filters to rows whose ``group_id`` belongs to a group in that zip; rows with no
+    ``group_id`` are excluded when a zip is given.
+    """
+    a = schema.audit_log
+    stmt = select(a.c.decision_type, func.count().label("n"))
+    if zip_code is not None:
+        g = schema.groups
+        stmt = stmt.select_from(a.join(g, a.c.group_id == g.c.id)).where(g.c.zip == zip_code)
+    if since is not None:
+        stmt = stmt.where(a.c.created_at >= since)
+    stmt = stmt.group_by(a.c.decision_type).order_by(a.c.decision_type)
+    return {row.decision_type: int(row.n) for row in conn.execute(stmt)}
+
+
+def judge_version_counts(conn: Connection) -> dict[str, dict[str, int]]:
+    """Distinct ``judge_version`` values seen in ``predictions`` and ``audit_log``, with counts.
+
+    Returns ``{version: {"predictions": n, "audit": n}}`` for tracking which judge version is
+    actually live, per ``regulars.ops.audit_cli judge-versions``.
+    """
+    p = schema.predictions
+    a = schema.audit_log
+    counts: dict[str, dict[str, int]] = {}
+    predictions_stmt = select(p.c.judge_version, func.count()).group_by(p.c.judge_version)
+    for version, n in conn.execute(predictions_stmt):
+        counts.setdefault(version, {"predictions": 0, "audit": 0})["predictions"] = int(n)
+    for version, n in conn.execute(
+        select(a.c.judge_version, func.count())
+        .where(a.c.judge_version.isnot(None))
+        .group_by(a.c.judge_version)
+    ):
+        counts.setdefault(version, {"predictions": 0, "audit": 0})["audit"] = int(n)
+    return counts
+
+
 # --- deposit ledger ----------------------------------------------------------------------------
 
 

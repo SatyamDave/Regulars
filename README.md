@@ -88,6 +88,16 @@ uv run python -m regulars.eval.cli gate dyads.jsonl memberships.jsonl  # week 6:
 uv run python -m regulars.db.gen_ddl                                # Postgres DDL from the metadata
 ```
 
+Operator tooling for the audit log (§9, §10 — reads `DATABASE_URL`, or pass `--engine-url`):
+
+```bash
+uv run python -m regulars.ops.audit_cli user <user_id> [--json]         # every row touching this user, newest first
+uv run python -m regulars.ops.audit_cli group <group_id>                 # a group's story, chronologically
+uv run python -m regulars.ops.audit_cli why-removed <user_id> <group_id> # the exact removal reason on record
+uv run python -m regulars.ops.audit_cli stats [--zip ZIP]                # counts by decision_type
+uv run python -m regulars.ops.audit_cli judge-versions                   # which judge version is live
+```
+
 ## CI/CD
 
 Every push and PR runs, as separate jobs, rolled up into one required status `CI passed`:
