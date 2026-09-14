@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "DeleteRequestBody": {
+        "properties": {
+          "mode": {
+            "default": "anonymize",
+            "enum": [
+              "hard",
+              "anonymize"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "DeleteRequestBody",
+        "type": "object"
+      },
       "ErrorResponse": {
         "description": "Shape of the JSON body FastAPI's default handler renders for an ``HTTPException``.",
         "properties": {
@@ -14,6 +29,19 @@
           "detail"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
         "type": "object"
       },
       "HealthResponse": {
@@ -30,6 +58,46 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       },
       "WebhookAckResponse": {
@@ -108,6 +176,118 @@
         "tags": [
           "health"
         ]
+      }
+    },
+    "/privacy/delete/{user_id}": {
+      "post": {
+        "operationId": "delete_user_data_route_privacy_delete__user_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-requester-id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Requester-Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete User Data Route Privacy Delete  User Id  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete User Data Route"
+      }
+    },
+    "/privacy/export/{user_id}": {
+      "get": {
+        "operationId": "export_user_data_privacy_export__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-requester-id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Requester-Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Export User Data Privacy Export  User Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export User Data"
       }
     },
     "/webhooks/bluebubbles": {
