@@ -14,14 +14,25 @@ out, and settle promptly after the event.
 The Stripe SDK is injected as a *client* satisfying ``StripeClientLike`` (the real
 ``stripe.StripeClient`` does structurally) so tests run against a fake and never touch the
 network.
+
+**Outbound retries.** ``create_hold``/``capture``/``release`` call Stripe over the network, which
+occasionally fails transiently (rate limit, dropped connection, a Stripe-side 5xx). Those three
+retry with the same jittered-backoff policy ``regulars.llm.anthropic_client.AnthropicLLM`` uses
+for the Anthropic SDK, factored into ``regulars.core.retry`` so neither package duplicates it.
+Webhook *receipt* idempotency (Stripe's at-least-once delivery) is a separate concern, handled by
+``regulars.payments.idempotency``.
 """
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import stripe
+
+from regulars.core.retry import retry_async
 
 
 class PaymentIntentLike(Protocol):
@@ -89,12 +100,36 @@ class StripeDeposits:
     """Manual-capture deposit holds. See the module docstring for the 7-day authorization window."""
 
     def __init__(
-        self, api_key: str, webhook_secret: str, client: StripeClientLike | None = None
+        self,
+        api_key: str,
+        webhook_secret: str,
+        client: StripeClientLike | None = None,
+        *,
+        max_retries: int = 3,
+        base_delay_s: float = 1.0,
+        max_delay_s: float = 20.0,
     ) -> None:
         self._webhook_secret = webhook_secret
         self._client: StripeClientLike = (
             client if client is not None else stripe.StripeClient(api_key)
         )
+        self._max_retries = max_retries
+        self._base_delay_s = base_delay_s
+        self._max_delay_s = max_delay_s
+        # Injectable so tests can assert retry behavior without sleeping.
+        self.sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+
+    async def _call(self, operation: Callable[[], Awaitable[PaymentIntentLike]]) -> DepositHold:
+        """Run a Stripe call, retrying transient errors (rate limit, connection, 5xx)."""
+        intent = await retry_async(
+            operation,
+            is_retryable=_retryable,
+            max_retries=self._max_retries,
+            base_delay_s=self._base_delay_s,
+            max_delay_s=self._max_delay_s,
+            sleep=self.sleep,
+        )
+        return _hold(intent)
 
     async def create_hold(
         self,
@@ -115,19 +150,18 @@ class StripeDeposits:
         }
         if customer_id is not None:
             params["customer"] = customer_id
-        intent = await self._client.v1.payment_intents.create_async(params)
-        return _hold(intent)
+        return await self._call(lambda: self._client.v1.payment_intents.create_async(params))
 
     async def capture(self, intent_id: str, amount_cents: int | None = None) -> DepositHold:
         """Capture the authorization (no-show, forfeited). Partial capture when ``amount_cents``."""
         params = {"amount_to_capture": amount_cents} if amount_cents is not None else None
-        intent = await self._client.v1.payment_intents.capture_async(intent_id, params)
-        return _hold(intent)
+        return await self._call(
+            lambda: self._client.v1.payment_intents.capture_async(intent_id, params)
+        )
 
     async def release(self, intent_id: str) -> DepositHold:
         """Cancel the authorization (attended; nothing is charged)."""
-        intent = await self._client.v1.payment_intents.cancel_async(intent_id)
-        return _hold(intent)
+        return await self._call(lambda: self._client.v1.payment_intents.cancel_async(intent_id))
 
     def verify_webhook(self, payload: bytes, sig_header: str | None) -> StripeEvent:
         """Check ``Stripe-Signature`` and parse the event; raises ``WebhookSignatureError``."""
@@ -146,3 +180,10 @@ def _hold(intent: PaymentIntentLike) -> DepositHold:
     return DepositHold(
         intent_id=intent.id, client_secret=intent.client_secret, status=intent.status
     )
+
+
+def _retryable(exc: Exception) -> bool:
+    """Rate limits, dropped connections, and Stripe-side 5xxs are worth retrying; nothing else."""
+    if isinstance(exc, stripe.RateLimitError | stripe.APIConnectionError):
+        return True
+    return isinstance(exc, stripe.APIError) and (exc.http_status or 0) >= 500

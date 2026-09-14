@@ -12,7 +12,6 @@ jittered exponential backoff on rate limits and 5xx/overloaded responses, capped
 from __future__ import annotations
 
 import asyncio
-import random
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
@@ -26,6 +25,7 @@ from anthropic.types import (
 )
 
 from regulars.core.llm import LLMMessage
+from regulars.core.retry import jittered_backoff_delay
 
 # Model families on which the Messages API rejects ``temperature`` with a 400 (sampling
 # parameters were removed from Claude Opus 4.7 onward). Haiku 4.5 and the 4.6 family still
@@ -110,8 +110,7 @@ class AnthropicLLM:
                 return min(float(retry_after), self.max_delay_s)
             except ValueError:
                 pass
-        ceiling = min(self.base_delay_s * (2.0**attempt), self.max_delay_s)
-        return ceiling * random.uniform(0.5, 1.5)
+        return jittered_backoff_delay(attempt, self.base_delay_s, self.max_delay_s)
 
     @staticmethod
     def _retryable(err: APIStatusError) -> bool:

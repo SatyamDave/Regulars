@@ -31,11 +31,16 @@ EXPECTED_0002_TABLES = {
     "deposit_holds",
 }
 
-EXPECTED_TABLES = EXPECTED_0001_TABLES | EXPECTED_0002_TABLES
+EXPECTED_0003_TABLES = {
+    "processed_webhook_events",
+}
+
+EXPECTED_TABLES = EXPECTED_0001_TABLES | EXPECTED_0002_TABLES | EXPECTED_0003_TABLES
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "regulars/db/migrations"
 MIGRATION = MIGRATIONS_DIR / "0001_initial.sql"
 MIGRATION_0002 = MIGRATIONS_DIR / "0002_bot_state.sql"
+MIGRATION_0003 = MIGRATIONS_DIR / "0003_webhook_idempotency.sql"
 
 
 def test_schema_creates_on_sqlite(engine: Engine) -> None:
@@ -60,6 +65,13 @@ def test_checked_in_migration_0002_matches_generator() -> None:
     assert MIGRATION_0002.read_text() == render_migration_ddl("0002"), (
         "regenerate with: uv run python -m regulars.db.gen_ddl --migration 0002 > "
         "regulars/db/migrations/0002_bot_state.sql"
+    )
+
+
+def test_checked_in_migration_0003_matches_generator() -> None:
+    assert MIGRATION_0003.read_text() == render_migration_ddl("0003"), (
+        "regenerate with: uv run python -m regulars.db.gen_ddl --migration 0003 > "
+        "regulars/db/migrations/0003_webhook_idempotency.sql"
     )
 
 
