@@ -34,6 +34,7 @@ from regulars.bot.transport import Transport, parse_bluebubbles_webhook
 from regulars.db import repo
 from regulars.db.bot_store import SqlBotStore
 from regulars.db.engine import make_engine
+from regulars.db.idempotency_store import SqlIdempotencyStore
 from regulars.db.ledger_store import SqlLedgerStore
 from regulars.payments.collector import (
     DepositCollector as PaymentsDepositCollector,
@@ -46,6 +47,7 @@ from regulars.payments.collector import (
     handle_payment_event,
 )
 from regulars.payments.fake_stripe import FakeStripeClient
+from regulars.payments.idempotency import IdempotentPaymentEventSink, WebhookIdempotencyStore
 from regulars.payments.ledger import Ledger
 from regulars.payments.stripe_deposits import StripeDeposits, StripeEvent
 
@@ -100,12 +102,18 @@ class System:
         stripe: StripeDeposits | None = None,
         clock: Clock | None = None,
         env: Mapping[str, str] | None = None,
+        idempotency_store: WebhookIdempotencyStore | None = None,
     ) -> System:
         """Read ``Settings`` and ``DATABASE_URL`` from the environment and build the system."""
         settings = Settings.from_env(env)
         engine = make_engine()
         return build_system(
-            settings, engine=engine, transport=transport, stripe=stripe, clock=clock
+            settings,
+            engine=engine,
+            transport=transport,
+            stripe=stripe,
+            clock=clock,
+            idempotency_store=idempotency_store,
         )
 
 
@@ -116,8 +124,14 @@ def build_system(
     transport: Transport,
     stripe: StripeDeposits | None = None,
     clock: Clock | None = None,
+    idempotency_store: WebhookIdempotencyStore | None = None,
 ) -> System:
-    """Wire one ``System``: SQL stores, ledger, deposit collector, bot runtime, FastAPI app."""
+    """Wire one ``System``: SQL stores, ledger, deposit collector, bot runtime, FastAPI app.
+
+    ``idempotency_store`` guards ``/webhooks/stripe`` against Stripe's at-least-once redelivery
+    (see ``regulars.payments.idempotency``); it defaults to a ``SqlIdempotencyStore`` over
+    ``engine`` so production wiring is protected without callers having to opt in.
+    """
     active_clock = clock or SystemClock()
     store = SqlBotStore(engine)
     ledger_store = SqlLedgerStore(engine)
@@ -160,11 +174,17 @@ def build_system(
             # member and requests a backfill, so there is nothing further to do here.
             pass
 
+    active_idempotency_store = idempotency_store or SqlIdempotencyStore(engine)
+    payment_sink = IdempotentPaymentEventSink(
+        inner=_PaymentSink(handle_payment),
+        store=active_idempotency_store,
+        clock=active_clock.now,
+    )
     deposits_for_app = stripe if stripe is not None else _offline_stripe_deposits(settings)
     app = create_app(
         settings,
         deposits=deposits_for_app,
-        payment_sink=_PaymentSink(handle_payment),
+        payment_sink=payment_sink,
         inbound_sink=_InboundSink(handle_inbound),
     )
     return System(app=app, runtime=runtime, engine=engine, store=store, ledger=ledger)

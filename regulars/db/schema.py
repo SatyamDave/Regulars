@@ -42,15 +42,20 @@ from regulars.core.persona import PersonaSource
 AssemblyMethod = Literal["model", "random"]
 DepositKind = Literal["deposit_hold", "forfeit", "redistributed_credit", "applied"]
 HoldState = Literal["held", "captured", "released"]
+WebhookStatus = Literal["processing", "done", "failed"]
 
 ASSEMBLY_METHODS: tuple[str, ...] = get_args(AssemblyMethod)
 PERSONA_SOURCES: tuple[str, ...] = get_args(PersonaSource)
 DEPOSIT_KINDS: tuple[str, ...] = get_args(DepositKind)
 HOLD_STATES: tuple[str, ...] = get_args(HoldState)
+WEBHOOK_STATUSES: tuple[str, ...] = get_args(WebhookStatus)
 
 # Tables added after the 0001 migration (see regulars/db/migrations/0002_bot_state.sql) are
 # tagged with this marker so `gen_ddl.py`'s default output stays exactly the 0001 tables.
 MIGRATION_0002 = "0002"
+
+# Tables added by 0003 (see regulars/db/migrations/0003_webhook_idempotency.sql), same pattern.
+MIGRATION_0003 = "0003"
 
 # Stable constraint names so the Postgres migration is diffable across regenerations.
 NAMING_CONVENTION = {
@@ -348,4 +353,23 @@ deposit_holds = Table(
     Column("updated_at", TIMESTAMP, nullable=False),
     CheckConstraint(f"state IN ({_sql_in(HOLD_STATES)})", name="state"),
     info={"migration": MIGRATION_0002},
+)
+
+# --- 0003: webhook idempotency ------------------------------------------------------------------
+# Stripe delivers webhooks at-least-once (retrying on any non-2xx or timeout), so
+# ``regulars.payments.idempotency`` records each event id's processing status here to make a
+# redelivered event a no-op. Tagged ``info={"migration": MIGRATION_0003}`` like 0002 above; see
+# ``gen_ddl.py --migration 0003``.
+
+processed_webhook_events = Table(
+    "processed_webhook_events",
+    metadata,
+    Column("event_id", String(255), primary_key=True),
+    Column("event_type", String(255), nullable=False),
+    Column("received_at", TIMESTAMP, nullable=False),
+    Column("processed_at", TIMESTAMP, nullable=True),
+    Column("status", String(16), nullable=False),
+    Column("error", Text, nullable=True),
+    CheckConstraint(f"status IN ({_sql_in(WEBHOOK_STATUSES)})", name="status"),
+    info={"migration": MIGRATION_0003},
 )

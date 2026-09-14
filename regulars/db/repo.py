@@ -34,9 +34,11 @@ from regulars.db.schema import (
     DEPOSIT_KINDS,
     HOLD_STATES,
     PERSONA_SOURCES,
+    WEBHOOK_STATUSES,
     AssemblyMethod,
     DepositKind,
     HoldState,
+    WebhookStatus,
 )
 
 
@@ -222,6 +224,15 @@ class DepositHoldRow(_Record):
     credit_cents: int
     state: HoldState
     updated_at: datetime
+
+
+class ProcessedWebhookEventRow(_Record):
+    event_id: str
+    event_type: str
+    received_at: datetime
+    processed_at: datetime | None
+    status: WebhookStatus
+    error: str | None
 
 
 # --- helpers -----------------------------------------------------------------------------------
@@ -1032,3 +1043,41 @@ def deposit_holds_for_plan(conn: Connection, plan_id: str) -> list[DepositHoldRo
     dh = schema.deposit_holds
     stmt = select(dh).where(dh.c.plan_id == plan_id).order_by(dh.c.user_id)
     return [DepositHoldRow(**_row_dict(r)) for r in conn.execute(stmt)]
+
+
+# --- webhook idempotency (0003; regulars.payments.idempotency.WebhookIdempotencyStore) ---------
+
+
+def put_processed_webhook_event(
+    conn: Connection,
+    *,
+    event_id: str,
+    event_type: str,
+    received_at: datetime,
+    status: WebhookStatus,
+    processed_at: datetime | None = None,
+    error: str | None = None,
+) -> ProcessedWebhookEventRow:
+    """Insert or replace the row keyed by ``event_id``, mirroring ``put_deposit_hold``."""
+    if status not in WEBHOOK_STATUSES:
+        raise ValueError(f"status must be one of {WEBHOOK_STATUSES}, got {status!r}")
+    pwe = schema.processed_webhook_events
+    record = ProcessedWebhookEventRow(
+        event_id=event_id,
+        event_type=event_type,
+        received_at=_utc(received_at) or received_at,
+        processed_at=_utc(processed_at),
+        status=status,
+        error=error,
+    )
+    values = record.model_dump()
+    key = pwe.c.event_id == event_id
+    if conn.execute(update(pwe).where(key).values(**values)).rowcount == 0:
+        conn.execute(insert(pwe).values(**values))
+    return record
+
+
+def get_processed_webhook_event(conn: Connection, event_id: str) -> ProcessedWebhookEventRow | None:
+    pwe = schema.processed_webhook_events
+    row = conn.execute(select(pwe).where(pwe.c.event_id == event_id)).first()
+    return None if row is None else ProcessedWebhookEventRow(**_row_dict(row))
