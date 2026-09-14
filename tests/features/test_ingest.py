@@ -57,7 +57,7 @@ def test_unknown_participant_rejected() -> None:
 
 
 BB_BASE: dict[str, Any] = {
-    "ROWID": 7,
+    "originalROWID": 7,
     "guid": "msg-7",
     "dateCreated": 1_700_000_000_000,
     "isFromMe": False,
@@ -117,6 +117,29 @@ def test_bluebubbles_string_type_and_bp_prefix() -> None:
         guid_to_id={"msg-9": 9},
     )
     assert m is not None and m.body == "😂" and m.tapback_target == 9
+
+
+def test_bluebubbles_word_string_associated_type() -> None:
+    """BlueBubbles' ORM transformer renders associatedMessageType as a word string ("laugh",
+    "-love") when the entity is hydrated through it, per BlueBubbles' own published example
+    payloads; the raw poller path used for live webhooks assigns the raw int instead. Accept both.
+    """
+    added = message_row_from_bluebubbles(
+        {**BB_BASE, "associatedMessageType": "laugh", "associatedMessageGuid": "p:0/msg-3"},
+        "g1",
+        guid_to_id={"msg-3": 3},
+    )
+    assert added is not None and added.body == "😂" and added.tapback_target == 3
+
+    removed = message_row_from_bluebubbles(
+        {**BB_BASE, "associatedMessageType": "-love", "associatedMessageGuid": "p:0/msg-3"},
+        "g1",
+        guid_to_id={"msg-3": 3},
+    )
+    assert removed is None
+
+    sticker = message_row_from_bluebubbles({**BB_BASE, "associatedMessageType": "sticker"}, "g1")
+    assert sticker is None
 
 
 def test_bluebubbles_from_me_and_skips() -> None:

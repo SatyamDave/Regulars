@@ -21,8 +21,13 @@ BlueBubbles REST assumptions (server v1.x, private API enabled). Each is one lin
                         ``guid``, ``text``, ``dateCreated`` (ms epoch), ``isFromMe``,
                         ``handle.address``, ``chats[0].guid``, ``threadOriginatorGuid`` (inline
                         reply target), ``associatedMessageType``/``associatedMessageGuid``
-                        (tapbacks; 2000-2005 add, 3000-3005 remove), ``attachments[]`` with
-                        ``guid`` and ``mimeType``.
+                        (tapbacks; 2000-2005 add, 3000-3005 remove; the type can arrive as either
+                        that raw int or a word string like ``"laugh"``/``"-love"`` depending on
+                        which BlueBubbles code path produced it), ``attachments[]`` with ``guid``
+                        and ``mimeType``.
+
+All of the above verified against ``bluebubbles-server`` source and BlueBubbles' own published
+example payloads; see ``docs/bluebubbles-api-contract.md`` for the full per-field citation.
 """
 
 from __future__ import annotations
@@ -50,6 +55,25 @@ _TAPBACK_EMOJI: dict[int, str] = {
 }
 _TAPBACK_ADD = range(2000, 2006)
 _TAPBACK_REMOVE = range(3000, 3006)
+# BlueBubbles' ORM entity renders ``associatedMessageType`` as a word string ("laugh", "-love", ...)
+# when hydrated through its own transformer, and BlueBubbles' published example payloads show
+# exactly that, while the live-poller path that feeds webhooks assigns the raw integer instead
+# (verified against bluebubbles-server source; see docs/bluebubbles-api-contract.md). Accept both.
+_TAPBACK_TYPE_NAMES: dict[str, int] = {
+    "sticker": 1000,
+    "love": 2000,
+    "like": 2001,
+    "dislike": 2002,
+    "laugh": 2003,
+    "emphasize": 2004,
+    "question": 2005,
+    "-love": 3000,
+    "-like": 3001,
+    "-dislike": 3002,
+    "-laugh": 3003,
+    "-emphasize": 3004,
+    "-question": 3005,
+}
 
 
 @dataclass(frozen=True)
@@ -299,8 +323,12 @@ def _attachment_url(base_url: str, attachment: Mapping[str, Any]) -> str:
 
 
 def _int_or_none(raw: Any) -> int | None:
+    """``associatedMessageType`` arrives as an int, a numeric string, a word string (see
+    ``_TAPBACK_TYPE_NAMES``), or 0/None."""
     if raw is None:
         return None
+    if isinstance(raw, str) and raw in _TAPBACK_TYPE_NAMES:
+        return _TAPBACK_TYPE_NAMES[raw]
     try:
         value = int(raw)
     except (TypeError, ValueError):

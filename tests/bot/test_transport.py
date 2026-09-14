@@ -143,6 +143,30 @@ def test_parse_tapback_add_and_remove() -> None:
     )
 
 
+def test_parse_tapback_word_string_type() -> None:
+    """BlueBubbles' ORM transformer renders associatedMessageType as a word string ("laugh",
+    "-love") when the entity is hydrated through it, per BlueBubbles' own published example
+    payloads; the raw poller path used for live webhooks assigns the raw int instead. Accept both.
+    """
+    added = parse_bluebubbles_webhook(
+        webhook(
+            text="Laughed at “2”",
+            associatedMessageType="laugh",
+            associatedMessageGuid="p:0/orig-7",
+        )
+    )
+    assert added is not None
+    assert added.is_tapback and added.tapback == "😂" and added.reply_to == "orig-7"
+
+    removed = parse_bluebubbles_webhook(
+        webhook(associatedMessageType="-love", associatedMessageGuid="p:0/orig-7")
+    )
+    assert removed is None
+
+    sticker = parse_bluebubbles_webhook(webhook(associatedMessageType="sticker"))
+    assert sticker is None
+
+
 def test_parse_audio_attachment() -> None:
     msg = parse_bluebubbles_webhook(
         webhook(text=None, attachments=[{"guid": "att-1", "mimeType": "audio/x-caf"}]),
