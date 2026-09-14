@@ -8,6 +8,8 @@ Two inbound edges, both thin:
   ``regulars.features.ingest`` and the bot own the BlueBubbles shape. When
   ``BLUEBUBBLES_WEBHOOK_TOKEN`` is set the request must carry it in ``X-Webhook-Token``.
 - ``GET /healthz``.
+- ``GET /metrics``: Prometheus text exposition of the in-process registry
+  (``regulars.observability.metrics``).
 
 Webhook bodies carry card details and message text: never log them. Handler exceptions
 propagate as 500s so Stripe and BlueBubbles retry.
@@ -28,6 +30,7 @@ from typing import Any, Protocol
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, SecretStr
 
+from regulars.observability.metrics import render_prometheus_text
 from regulars.payments.stripe_deposits import StripeDeposits, StripeEvent, WebhookSignatureError
 
 
@@ -91,6 +94,10 @@ def create_app(
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        return Response(content=render_prometheus_text(), media_type="text/plain")
 
     @app.post("/webhooks/stripe")
     async def stripe_webhook(request: Request) -> Response:

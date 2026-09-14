@@ -7,9 +7,11 @@ and the router compose these five and nothing else.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import functools
+import time
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
-from typing import Any, Final
+from typing import Any, Final, ParamSpec, TypeVar
 
 from regulars.bot.clock import Clock
 from regulars.bot.deposits import DepositCollector, DepositRequest
@@ -18,6 +20,43 @@ from regulars.bot.store import AuditEntry, BotStore, GroupChat
 from regulars.bot.transport import Transport
 
 ACTOR: Final = "bot"
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+OnCall = Callable[[str, float, bool], None]
+"""Optional observability hook: ``(tool_name, duration_seconds, success)``. No-op if unset —
+this module has no dependency on how (or whether) a caller records the call; see
+``regulars.observability.instrumented.bot_tool_hook`` for a metrics-recording implementation."""
+
+
+def _instrumented(
+    tool_name: str,
+) -> Callable[[Callable[_P, Awaitable[_R]]], Callable[_P, Awaitable[_R]]]:
+    """Times a tool method and reports it to ``self._on_call`` when one is configured."""
+
+    def decorator(fn: Callable[_P, Awaitable[_R]]) -> Callable[_P, Awaitable[_R]]:
+        @functools.wraps(fn)
+        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+            self = args[0]
+            on_call: OnCall | None = getattr(self, "_on_call", None)
+            if on_call is None:
+                return await fn(*args, **kwargs)
+            start = time.monotonic()
+            success = True
+            try:
+                return await fn(*args, **kwargs)
+            except Exception:
+                success = False
+                raise
+            finally:
+                on_call(tool_name, time.monotonic() - start, success)
+
+        return wrapper
+
+    return decorator
+
+
 TOOL_NAMES: Final[tuple[str, ...]] = (
     "send_message",
     "create_plan",
@@ -33,13 +72,20 @@ class ToolError(RuntimeError):
 
 class BotTools:
     def __init__(
-        self, transport: Transport, store: BotStore, deposits: DepositCollector, clock: Clock
+        self,
+        transport: Transport,
+        store: BotStore,
+        deposits: DepositCollector,
+        clock: Clock,
+        *,
+        on_call: OnCall | None = None,
     ) -> None:
         self.transport = transport
         self.store = store
         self.deposits = deposits
         self.clock = clock
         self._plan_counter = 0
+        self._on_call = on_call
 
     @staticmethod
     def tools() -> tuple[str, ...]:
@@ -48,6 +94,7 @@ class BotTools:
 
     # --- 1. send_message -----------------------------------------------------------------------
 
+    @_instrumented("send_message")
     async def send_message(
         self, group_id: str | None, body: str, *, to_user: str | None = None
     ) -> str:
@@ -71,6 +118,7 @@ class BotTools:
 
     # --- 2. create_plan ------------------------------------------------------------------------
 
+    @_instrumented("create_plan")
     async def create_plan(
         self,
         group_id: str,
@@ -104,6 +152,7 @@ class BotTools:
 
     # --- 3. collect_deposit --------------------------------------------------------------------
 
+    @_instrumented("collect_deposit")
     async def collect_deposit(
         self, plan_id: str, user_id: str, amount_cents: int
     ) -> DepositRequest:
@@ -137,6 +186,7 @@ class BotTools:
 
     # --- 4. remove_member ----------------------------------------------------------------------
 
+    @_instrumented("remove_member")
     async def remove_member(self, group_id: str, user_id: str, reason: str) -> None:
         group = self._group(group_id)
         member = group.member(user_id)
@@ -162,6 +212,7 @@ class BotTools:
 
     # --- 5. log_signal -------------------------------------------------------------------------
 
+    @_instrumented("log_signal")
     async def log_signal(
         self, user_id: str, signal_type: str, value: float, *, group_id: str | None = None
     ) -> AuditEntry:

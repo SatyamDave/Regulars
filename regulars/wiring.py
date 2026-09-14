@@ -35,6 +35,9 @@ from regulars.db import repo
 from regulars.db.bot_store import SqlBotStore
 from regulars.db.engine import make_engine
 from regulars.db.ledger_store import SqlLedgerStore
+from regulars.observability.instrumented import bot_tool_hook
+from regulars.observability.logging_config import configure_logging
+from regulars.observability.middleware import RequestLoggingMiddleware
 from regulars.payments.collector import (
     DepositCollector as PaymentsDepositCollector,
 )
@@ -100,12 +103,18 @@ class System:
         stripe: StripeDeposits | None = None,
         clock: Clock | None = None,
         env: Mapping[str, str] | None = None,
+        observability: bool = True,
     ) -> System:
         """Read ``Settings`` and ``DATABASE_URL`` from the environment and build the system."""
         settings = Settings.from_env(env)
         engine = make_engine()
         return build_system(
-            settings, engine=engine, transport=transport, stripe=stripe, clock=clock
+            settings,
+            engine=engine,
+            transport=transport,
+            stripe=stripe,
+            clock=clock,
+            observability=observability,
         )
 
 
@@ -116,8 +125,15 @@ def build_system(
     transport: Transport,
     stripe: StripeDeposits | None = None,
     clock: Clock | None = None,
+    observability: bool = True,
 ) -> System:
-    """Wire one ``System``: SQL stores, ledger, deposit collector, bot runtime, FastAPI app."""
+    """Wire one ``System``: SQL stores, ledger, deposit collector, bot runtime, FastAPI app.
+
+    ``observability=True`` (the default) additionally: configures JSON stdlib logging, adds
+    ``RequestLoggingMiddleware`` to the app, and passes a metrics-recording ``on_call`` hook into
+    the bot runtime's ``BotTools`` (§9). Pass ``observability=False`` to opt out (e.g. a test that
+    configures logging itself) with the rest of the wiring unchanged.
+    """
     active_clock = clock or SystemClock()
     store = SqlBotStore(engine)
     ledger_store = SqlLedgerStore(engine)
@@ -130,7 +146,16 @@ def build_system(
         payments_collector = FakeDepositCollector()
     bot_deposits = _CollectorAdapter(payments_collector)
 
-    runtime = build_runtime(transport, store, bot_deposits, active_clock)
+    if observability:
+        configure_logging()
+
+    runtime = build_runtime(
+        transport,
+        store,
+        bot_deposits,
+        active_clock,
+        on_tool_call=bot_tool_hook() if observability else None,
+    )
 
     async def handle_inbound(payload: dict[str, Any]) -> None:
         inbound = parse_bluebubbles_webhook(payload)
@@ -167,6 +192,8 @@ def build_system(
         payment_sink=_PaymentSink(handle_payment),
         inbound_sink=_InboundSink(handle_inbound),
     )
+    if observability:
+        app.add_middleware(RequestLoggingMiddleware)
     return System(app=app, runtime=runtime, engine=engine, store=store, ledger=ledger)
 
 
