@@ -375,6 +375,13 @@ def latest_persona_version(conn: Connection, user_id: str) -> PersonaVersion | N
     return None if row is None else _persona_from_row(_row_dict(row))
 
 
+def persona_versions_for_user(conn: Connection, user_id: str) -> list[PersonaVersion]:
+    """Every version for ``user_id``, oldest first — the full history (§1 rule 1)."""
+    pv = schema.persona_versions
+    stmt = select(pv).where(pv.c.user_id == user_id).order_by(pv.c.version)
+    return [_persona_from_row(_row_dict(r)) for r in conn.execute(stmt)]
+
+
 # --- sims, features, predictions ---------------------------------------------------------------
 
 
@@ -544,6 +551,12 @@ def end_membership(
     )
 
 
+def memberships_for_user(conn: Connection, user_id: str) -> list[Membership]:
+    m = schema.memberships
+    stmt = select(m).where(m.c.user_id == user_id).order_by(m.c.group_id, m.c.joined_round)
+    return [Membership(**_row_dict(r)) for r in conn.execute(stmt)]
+
+
 def memberships_for_group(
     conn: Connection, group_id: str, *, active_only: bool = False
 ) -> list[Membership]:
@@ -692,6 +705,14 @@ def messages_for_group(conn: Connection, group_id: str) -> list[Message]:
     return [Message(**_row_dict(r)) for r in conn.execute(stmt)]
 
 
+def messages_by_user(conn: Connection, user_id: str) -> list[Message]:
+    """Messages authored by ``user_id``, across every group. Never another user's message body:
+    the caller is responsible for not joining this against other participants' content."""
+    m = schema.messages
+    stmt = select(m).where(m.c.user_id == user_id).order_by(m.c.sent_at_ms, m.c.id)
+    return [Message(**_row_dict(r)) for r in conn.execute(stmt)]
+
+
 # --- ratings (directed, §1 rule 2) -------------------------------------------------------------
 
 
@@ -724,6 +745,20 @@ def insert_rating(
 def ratings_for_plan(conn: Connection, plan_id: str) -> list[Rating]:
     r = schema.ratings
     stmt = select(r).where(r.c.plan_id == plan_id).order_by(r.c.rater_id, r.c.ratee_id)
+    return [Rating(**_row_dict(row)) for row in conn.execute(stmt)]
+
+
+def ratings_given_by(conn: Connection, user_id: str) -> list[Rating]:
+    """Directed ratings where ``user_id`` is the rater (§1 rule 2 — never merged with received)."""
+    r = schema.ratings
+    stmt = select(r).where(r.c.rater_id == user_id).order_by(r.c.plan_id, r.c.ratee_id)
+    return [Rating(**_row_dict(row)) for row in conn.execute(stmt)]
+
+
+def ratings_received_by(conn: Connection, user_id: str) -> list[Rating]:
+    """Directed ratings where ``user_id`` is the ratee (§1 rule 2 — never merged with given)."""
+    r = schema.ratings
+    stmt = select(r).where(r.c.ratee_id == user_id).order_by(r.c.plan_id, r.c.rater_id)
     return [Rating(**_row_dict(row)) for row in conn.execute(stmt)]
 
 
