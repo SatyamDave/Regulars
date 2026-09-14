@@ -20,3 +20,4 @@ infra/terraform/**/.terraform/
 *.tfstate.*
 # Note: .terraform.lock.hcl is intentionally NOT ignored — it should be committed to pin
 # provider versions once `terraform init` has been run for real.
+.coverage
