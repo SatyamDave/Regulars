@@ -16,7 +16,7 @@ from regulars.bot.onboarding import Onboarding
 from regulars.bot.plan import Plan
 from regulars.bot.router import Emit, LogSignal, OutboundAction, Router, SendMessage
 from regulars.bot.store import BotStore
-from regulars.bot.tools import BotTools
+from regulars.bot.tools import BotTools, OnCall
 from regulars.bot.transport import InboundMessage, Transport
 
 
@@ -85,9 +85,15 @@ def build_runtime(
     clock: Clock,
     *,
     on_event: Callable[[BotEvent], None] | None = None,
+    on_tool_call: OnCall | None = None,
 ) -> BotRuntime:
-    """Wire the default runtime. Every seam is a parameter; nothing here reaches the network."""
-    tools = BotTools(transport, store, deposits, clock)
+    """Wire the default runtime. Every seam is a parameter; nothing here reaches the network.
+
+    ``on_tool_call`` is an optional observability hook forwarded to ``BotTools`` unchanged (see
+    ``regulars.observability.instrumented.bot_tool_hook`` for a metrics-recording one); ``None``
+    (the default) preserves prior behavior exactly.
+    """
+    tools = BotTools(transport, store, deposits, clock, on_call=on_tool_call)
     flows = Flows(
         opener=GroupOpener(tools, transport, store, clock),
         lock=LockFlow(tools, store, clock),

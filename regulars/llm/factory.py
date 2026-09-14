@@ -17,19 +17,58 @@ Environment:
 - ``REGULARS_CHEAP_MODEL``       default ``claude-haiku-4-5``
 - ``ANTHROPIC_API_KEY``          forwarded to the Anthropic client; when unset the SDK falls back
   to its own credential resolution (``ANTHROPIC_AUTH_TOKEN`` / ``ant auth login`` profile)
+
+``llm_from_env``'s optional ``on_call`` is an observability hook — ``(duration_seconds,
+success)`` — reported after every ``complete()`` call. This module has no dependency on how (or
+whether) a caller records it; see ``regulars.observability.instrumented.llm_call_hook`` for a
+metrics-recording implementation, built per role since ``on_call`` here is already role-scoped.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping, Sequence
 from typing import Literal
 
-from regulars.core.llm import LLMClient
+from regulars.core.llm import LLMClient, LLMMessage
 from regulars.llm.anthropic_client import AnthropicLLM
 from regulars.llm.openai_compat import CENTAUR_MODEL, OpenAICompatibleLLM
 
 Role = Literal["enactment", "scoring", "cheap"]
+
+OnCall = Callable[[float, bool], None]
+
+
+class _InstrumentedLLM:
+    """Wraps an ``LLMClient``, reporting ``(duration_seconds, success)`` to ``on_call``."""
+
+    def __init__(self, inner: LLMClient, on_call: OnCall) -> None:
+        self._inner = inner
+        self._on_call = on_call
+        self.model = inner.model
+
+    async def complete(
+        self,
+        system: str,
+        messages: Sequence[LLMMessage],
+        *,
+        temperature: float = 1.0,
+        max_tokens: int = 512,
+        seed: int | None = None,
+    ) -> str:
+        start = time.monotonic()
+        success = True
+        try:
+            return await self._inner.complete(
+                system, messages, temperature=temperature, max_tokens=max_tokens, seed=seed
+            )
+        except Exception:
+            success = False
+            raise
+        finally:
+            self._on_call(time.monotonic() - start, success)
+
 
 DEFAULT_SCORING_MODEL = "claude-opus-5"
 DEFAULT_CHEAP_MODEL = "claude-haiku-4-5"
@@ -42,22 +81,34 @@ ENV_CHEAP_MODEL = "REGULARS_CHEAP_MODEL"
 ENV_ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
 
 
-def llm_from_env(role: Role, env: Mapping[str, str] | None = None) -> LLMClient:
-    """Construct the client for ``role``. ``env`` defaults to ``os.environ``."""
+def llm_from_env(
+    role: Role, env: Mapping[str, str] | None = None, *, on_call: OnCall | None = None
+) -> LLMClient:
+    """Construct the client for ``role``. ``env`` defaults to ``os.environ``.
+
+    ``on_call``, when given, wraps the result so every ``complete()`` reports its latency and
+    outcome; ``None`` (the default) returns the provider client unchanged.
+    """
     e = os.environ if env is None else env
     api_key = e.get(ENV_ANTHROPIC_API_KEY) or None
     scoring_model = e.get(ENV_SCORING_MODEL) or DEFAULT_SCORING_MODEL
 
+    client: LLMClient
     if role == "scoring":
-        return AnthropicLLM(scoring_model, api_key=api_key)
-    if role == "cheap":
-        return AnthropicLLM(e.get(ENV_CHEAP_MODEL) or DEFAULT_CHEAP_MODEL, api_key=api_key)
+        client = AnthropicLLM(scoring_model, api_key=api_key)
+    elif role == "cheap":
+        client = AnthropicLLM(e.get(ENV_CHEAP_MODEL) or DEFAULT_CHEAP_MODEL, api_key=api_key)
+    else:
+        base_url = e.get(ENV_ENACTMENT_BASE_URL) or None
+        if base_url:
+            client = OpenAICompatibleLLM(
+                e.get(ENV_ENACTMENT_MODEL) or CENTAUR_MODEL,
+                base_url=base_url,
+                api_key=e.get(ENV_ENACTMENT_API_KEY) or "EMPTY",
+            )
+        else:
+            client = AnthropicLLM(e.get(ENV_ENACTMENT_MODEL) or scoring_model, api_key=api_key)
 
-    base_url = e.get(ENV_ENACTMENT_BASE_URL) or None
-    if base_url:
-        return OpenAICompatibleLLM(
-            e.get(ENV_ENACTMENT_MODEL) or CENTAUR_MODEL,
-            base_url=base_url,
-            api_key=e.get(ENV_ENACTMENT_API_KEY) or "EMPTY",
-        )
-    return AnthropicLLM(e.get(ENV_ENACTMENT_MODEL) or scoring_model, api_key=api_key)
+    if on_call is not None:
+        return _InstrumentedLLM(client, on_call)
+    return client

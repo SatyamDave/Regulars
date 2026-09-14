@@ -36,6 +36,9 @@ from regulars.db.bot_store import SqlBotStore
 from regulars.db.engine import make_engine
 from regulars.db.idempotency_store import SqlIdempotencyStore
 from regulars.db.ledger_store import SqlLedgerStore
+from regulars.observability.instrumented import bot_tool_hook
+from regulars.observability.logging_config import configure_logging
+from regulars.observability.middleware import RequestLoggingMiddleware
 from regulars.payments.collector import (
     DepositCollector as PaymentsDepositCollector,
 )
@@ -103,6 +106,7 @@ class System:
         clock: Clock | None = None,
         env: Mapping[str, str] | None = None,
         idempotency_store: WebhookIdempotencyStore | None = None,
+        observability: bool = True,
     ) -> System:
         """Read ``Settings`` and ``DATABASE_URL`` from the environment and build the system."""
         settings = Settings.from_env(env)
@@ -114,6 +118,7 @@ class System:
             stripe=stripe,
             clock=clock,
             idempotency_store=idempotency_store,
+            observability=observability,
         )
 
 
@@ -125,12 +130,18 @@ def build_system(
     stripe: StripeDeposits | None = None,
     clock: Clock | None = None,
     idempotency_store: WebhookIdempotencyStore | None = None,
+    observability: bool = True,
 ) -> System:
     """Wire one ``System``: SQL stores, ledger, deposit collector, bot runtime, FastAPI app.
 
     ``idempotency_store`` guards ``/webhooks/stripe`` against Stripe's at-least-once redelivery
     (see ``regulars.payments.idempotency``); it defaults to a ``SqlIdempotencyStore`` over
     ``engine`` so production wiring is protected without callers having to opt in.
+
+    ``observability=True`` (the default) additionally: configures JSON stdlib logging, adds
+    ``RequestLoggingMiddleware`` to the app, and passes a metrics-recording ``on_call`` hook into
+    the bot runtime's ``BotTools`` (§9). Pass ``observability=False`` to opt out (e.g. a test that
+    configures logging itself) with the rest of the wiring unchanged.
     """
     active_clock = clock or SystemClock()
     store = SqlBotStore(engine)
@@ -144,7 +155,16 @@ def build_system(
         payments_collector = FakeDepositCollector()
     bot_deposits = _CollectorAdapter(payments_collector)
 
-    runtime = build_runtime(transport, store, bot_deposits, active_clock)
+    if observability:
+        configure_logging()
+
+    runtime = build_runtime(
+        transport,
+        store,
+        bot_deposits,
+        active_clock,
+        on_tool_call=bot_tool_hook() if observability else None,
+    )
 
     async def handle_inbound(payload: dict[str, Any]) -> None:
         inbound = parse_bluebubbles_webhook(payload)
@@ -187,6 +207,8 @@ def build_system(
         payment_sink=payment_sink,
         inbound_sink=_InboundSink(handle_inbound),
     )
+    if observability:
+        app.add_middleware(RequestLoggingMiddleware)
     return System(app=app, runtime=runtime, engine=engine, store=store, ledger=ledger)
 
 
