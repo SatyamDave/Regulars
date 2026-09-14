@@ -18,7 +18,7 @@ Input format (``pairs.yaml``), a YAML list of::
 
 * A BlueBubbles ``/api/v1/message`` export (a JSON list of raw payloads) — the shape
   :func:`regulars.features.ingest.message_row_from_bluebubbles` already parses. Detected by
-  the first row carrying ``ROWID`` or ``dateCreated``. The export owner (``isFromMe``) is
+  the first row carrying ``originalROWID`` or ``dateCreated``. The export owner (``isFromMe``) is
   mapped to ``a``; the other party to ``b`` (BlueBubbles dyadic exports have exactly two
   senders, so no address book is needed).
 * A generic JSON list for people exporting chat history by hand, without BlueBubbles::
@@ -100,7 +100,7 @@ def load_pairs_yaml(path: Path) -> list[PairSpec]:
 
 
 def _is_bluebubbles_shaped(rows: list[dict[str, Any]]) -> bool:
-    return any("ROWID" in r or "dateCreated" in r for r in rows)
+    return any("originalROWID" in r or "dateCreated" in r for r in rows)
 
 
 def _rows_from_bluebubbles(payloads: list[dict[str, Any]], a: str, b: str) -> list[MessageRow]:
@@ -111,9 +111,9 @@ def _rows_from_bluebubbles(payloads: list[dict[str, Any]], a: str, b: str) -> li
     ``b``.
     """
     guid_to_id = {
-        str(p["guid"]): int(p["ROWID"])
+        str(p["guid"]): int(p["originalROWID"])
         for p in payloads
-        if p.get("guid") is not None and p.get("ROWID") is not None
+        if p.get("guid") is not None and p.get("originalROWID") is not None
     }
     self_sentinel = "\0self\0"
     group_id = f"{a}:{b}"

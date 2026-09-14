@@ -113,7 +113,7 @@ def test_rejects_bluebubbles_export_with_no_usable_rows(tmp_path: Path) -> None:
         json.dumps(
             [
                 {
-                    "ROWID": 1,
+                    "originalROWID": 1,
                     "guid": "m1",
                     "dateCreated": 1_700_000_000_000,
                     "isFromMe": True,
@@ -137,7 +137,7 @@ def _bluebubbles_export() -> list[dict[str, Any]]:
     """A tiny two-sender BlueBubbles export: priya is the export owner, sam is the contact."""
     return [
         {
-            "ROWID": 1,
+            "originalROWID": 1,
             "guid": "m1",
             "dateCreated": 1_700_000_000_000,
             "isFromMe": True,
@@ -145,7 +145,7 @@ def _bluebubbles_export() -> list[dict[str, Any]]:
             "text": "hey are you around this weekend",
         },
         {
-            "ROWID": 2,
+            "originalROWID": 2,
             "guid": "m2",
             "dateCreated": 1_700_000_030_000,
             "isFromMe": False,
@@ -154,7 +154,7 @@ def _bluebubbles_export() -> list[dict[str, Any]]:
             "threadOriginatorGuid": "m1",
         },
         {
-            "ROWID": 3,
+            "originalROWID": 3,
             "guid": "m3",
             "dateCreated": 1_700_000_060_000,
             "isFromMe": True,
