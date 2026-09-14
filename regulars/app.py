@@ -24,7 +24,7 @@ import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib import metadata as importlib_metadata
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.security import APIKeyHeader
@@ -83,6 +83,13 @@ class Settings(BaseModel):
     stripe_api_key: SecretStr = SecretStr("")
     stripe_webhook_secret: SecretStr = SecretStr("")
     bluebubbles_webhook_token: SecretStr = SecretStr("")
+    # Deploy target, set via ENVIRONMENT (see .github/workflows/deploy.yml and
+    # deploy-staging.yml, docs/environments.md). Not currently read by anything in this
+    # module; it exists so callers (log setup, a Sentry SDK init if that lands — see
+    # https://github.com/.../sentry integration branch, not yet merged as of this writing)
+    # can branch on deploy target without adding another env lookup. Defaulting to
+    # "development" keeps every existing caller and test unaffected.
+    environment: Literal["development", "staging", "production"] = "development"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -91,6 +98,7 @@ class Settings(BaseModel):
             stripe_api_key=SecretStr(e.get("STRIPE_API_KEY", "")),
             stripe_webhook_secret=SecretStr(e.get("STRIPE_WEBHOOK_SECRET", "")),
             bluebubbles_webhook_token=SecretStr(e.get("BLUEBUBBLES_WEBHOOK_TOKEN", "")),
+            environment=e.get("ENVIRONMENT", "development"),  # type: ignore[arg-type]
         )
 
 

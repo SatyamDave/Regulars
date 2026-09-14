@@ -1,0 +1,61 @@
+name: Deploy Staging
+
+# Deploys the `staging` branch to Railway after CI and the image build both succeed on it.
+# No-op until the RAILWAY_TOKEN secret exists for the `staging` environment, so this is
+# safe to keep on.
+#
+# Promotion flow (see docs/environments.md): merge to `main` deploys to production via
+# deploy.yml as before. To exercise a change in staging first, push/merge it to the
+# `staging` branch (e.g. `git push origin main:staging` or a PR into `staging`), which
+# runs this workflow. Promotion to production is then just merging (or fast-forwarding)
+# `staging` into `main`, after the pre-promotion checklist in docs/environments.md passes.
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [staging]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  railway:
+    name: Railway (staging)
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Check for deploy credentials
+        id: creds
+        run: |
+          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RAILWAY_TOKEN not set; skipping deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Deploy
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm i -g @railway/cli
+          railway up --service "${{ vars.RAILWAY_SERVICE || 'regulars-staging' }}" --detach
+      - name: Health check
+        if: steps.creds.outputs.configured == 'true' && vars.STAGING_URL != ''
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "${{ vars.STAGING_URL }}/healthz"; then exit 0; fi
+            sleep 6
+          done
+          echo "healthz never came up" && exit 1
