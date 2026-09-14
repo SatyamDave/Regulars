@@ -18,7 +18,7 @@ Conventions:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -32,9 +32,11 @@ from regulars.db import schema
 from regulars.db.schema import (
     ASSEMBLY_METHODS,
     DEPOSIT_KINDS,
+    HOLD_STATES,
     PERSONA_SOURCES,
     AssemblyMethod,
     DepositKind,
+    HoldState,
 )
 
 
@@ -178,6 +180,50 @@ class DepositCredit(_Record):
     created_at: datetime
 
 
+class Handle(_Record):
+    handle: str
+    user_id: str
+    display_name: str
+    created_at: datetime
+
+
+class GroupChatRow(_Record):
+    group_id: str
+    chat_id: str
+    last_message_at_ms: int | None
+    last_sender: str | None
+
+
+class PlanRecord(_Record):
+    plan_id: str
+    plan_json: dict[str, Any]
+    updated_at: datetime
+
+
+class OnboardingStateRow(_Record):
+    user_id: str
+    state_json: dict[str, Any]
+    updated_at: datetime
+
+
+class MorningAfterStateRow(_Record):
+    user_id: str
+    plan_id: str
+    group_id: str
+    others_json: list[str]
+    updated_at: datetime
+
+
+class DepositHoldRow(_Record):
+    plan_id: str
+    user_id: str
+    intent_id: str | None
+    amount_cents: int
+    credit_cents: int
+    state: HoldState
+    updated_at: datetime
+
+
 # --- helpers -----------------------------------------------------------------------------------
 
 
@@ -237,6 +283,19 @@ def create_user(
 
 def get_user(conn: Connection, user_id: str) -> User:
     return User(**_one(conn, select(schema.users).where(schema.users.c.id == user_id), "user"))
+
+
+def list_users(
+    conn: Connection, *, zip_code: str | None = None, status: str | None = None
+) -> list[User]:
+    u = schema.users
+    stmt = select(u)
+    if zip_code is not None:
+        stmt = stmt.where(u.c.zip == zip_code)
+    if status is not None:
+        stmt = stmt.where(u.c.status == status)
+    stmt = stmt.order_by(u.c.id)
+    return [User(**_row_dict(r)) for r in conn.execute(stmt)]
 
 
 # --- persona versions (append-only, §1 rule 1) -------------------------------------------------
@@ -368,6 +427,26 @@ def sim_features_for(conn: Connection, sim_id: str) -> dict[str, float]:
     return {name: value for name, value in rows}
 
 
+def latest_predictions_for(
+    conn: Connection, user_ids: Sequence[str], *, judge_version: str | None = None
+) -> list[Prediction]:
+    """The most recent prediction per unordered pair drawn from ``user_ids``, newest wins."""
+    p = schema.predictions
+    ids = set(user_ids)
+    stmt = select(p)
+    if judge_version is not None:
+        stmt = stmt.where(p.c.judge_version == judge_version)
+    stmt = stmt.order_by(p.c.created_at)
+    latest: dict[tuple[str, str], Prediction] = {}
+    for row in conn.execute(stmt):
+        record = Prediction(**_row_dict(row))
+        if record.user_a not in ids or record.user_b not in ids:
+            continue
+        a, b = sorted((record.user_a, record.user_b))
+        latest[(a, b)] = record  # ascending created_at: last write per key wins
+    return list(latest.values())
+
+
 def insert_prediction(
     conn: Connection,
     *,
@@ -487,6 +566,28 @@ def create_plan(
     return record
 
 
+def ensure_plan_row(conn: Connection, plan_id: str, group_id: str) -> None:
+    """Insert a ``plans`` row under a caller-chosen id if one doesn't exist yet.
+
+    The bot mints its own plan ids (``regulars.bot.tools.BotTools.create_plan``) rather than
+    calling :func:`create_plan`, so ``regulars.db.bot_store.SqlBotStore.save_plan`` uses this to
+    keep the §1 ``plans`` table in sync without requiring a separate creation step.
+    """
+    p = schema.plans
+    if conn.execute(select(p.c.id).where(p.c.id == plan_id)).first() is not None:
+        return
+    conn.execute(
+        insert(p).values(
+            id=plan_id,
+            group_id=group_id,
+            proposed_at=_now(),
+            locked_at=None,
+            venue=None,
+            starts_at=None,
+        )
+    )
+
+
 def get_plan(conn: Connection, plan_id: str) -> Plan:
     return Plan(**_one(conn, select(schema.plans).where(schema.plans.c.id == plan_id), "plan"))
 
@@ -523,6 +624,12 @@ def upsert_rsvp(
     return Rsvp(**_one(conn, select(r).where(key), "rsvp"))
 
 
+def rsvps_for_plan(conn: Connection, plan_id: str) -> list[Rsvp]:
+    r = schema.rsvps
+    stmt = select(r).where(r.c.plan_id == plan_id).order_by(r.c.user_id)
+    return [Rsvp(**_row_dict(row)) for row in conn.execute(stmt)]
+
+
 def record_attendance(
     conn: Connection, plan_id: str, user_id: str, *, attended: bool, source: str
 ) -> Attendance:
@@ -533,6 +640,12 @@ def record_attendance(
     if conn.execute(update(a).where(key).values(**values)).rowcount == 0:
         conn.execute(insert(a).values(plan_id=plan_id, user_id=user_id, **values))
     return Attendance(plan_id=plan_id, user_id=user_id, attended=attended, source=source)
+
+
+def attendance_for_plan(conn: Connection, plan_id: str) -> list[Attendance]:
+    a = schema.attendance
+    stmt = select(a).where(a.c.plan_id == plan_id).order_by(a.c.user_id)
+    return [Attendance(**_row_dict(row)) for row in conn.execute(stmt)]
 
 
 # --- messages ----------------------------------------------------------------------------------
@@ -684,3 +797,187 @@ def deposit_credits_for_user(conn: Connection, user_id: str) -> list[DepositCred
     d = schema.deposit_credits
     stmt = select(d).where(d.c.user_id == user_id).order_by(d.c.created_at, d.c.id)
     return [DepositCredit(**_row_dict(r)) for r in conn.execute(stmt)]
+
+
+def deposit_credits_query(
+    conn: Connection, *, user_id: str | None = None, plan_id: str | None = None
+) -> list[DepositCredit]:
+    """Filtered read for ``LedgerStore.entries``: either filter may be omitted."""
+    d = schema.deposit_credits
+    stmt = select(d)
+    if user_id is not None:
+        stmt = stmt.where(d.c.user_id == user_id)
+    if plan_id is not None:
+        stmt = stmt.where(d.c.plan_id == plan_id)
+    stmt = stmt.order_by(d.c.created_at, d.c.id)
+    return [DepositCredit(**_row_dict(r)) for r in conn.execute(stmt)]
+
+
+# --- bot state (0002; regulars.bot.store.BotStore over these) ----------------------------------
+
+
+def bind_handle(
+    conn: Connection, *, handle: str, user_id: str, display_name: str | None = None
+) -> Handle:
+    """Insert or update the handle -> user mapping. ``display_name`` defaults to the handle."""
+    h = schema.handles
+    record = Handle(
+        handle=handle,
+        user_id=user_id,
+        display_name=display_name or handle,
+        created_at=_now(),
+    )
+    values = record.model_dump()
+    updated = conn.execute(update(h).where(h.c.handle == handle).values(**values)).rowcount
+    if updated == 0:
+        conn.execute(insert(h).values(**values))
+    return record
+
+
+def get_handle(conn: Connection, handle: str) -> Handle | None:
+    h = schema.handles
+    row = conn.execute(select(h).where(h.c.handle == handle)).first()
+    return None if row is None else Handle(**_row_dict(row))
+
+
+def handle_for_user(conn: Connection, user_id: str) -> Handle | None:
+    h = schema.handles
+    row = conn.execute(select(h).where(h.c.user_id == user_id).order_by(h.c.created_at)).first()
+    return None if row is None else Handle(**_row_dict(row))
+
+
+def save_group_chat(
+    conn: Connection,
+    *,
+    group_id: str,
+    chat_id: str,
+    last_message_at_ms: int | None = None,
+    last_sender: str | None = None,
+) -> GroupChatRow:
+    gc = schema.group_chats
+    record = GroupChatRow(
+        group_id=group_id,
+        chat_id=chat_id,
+        last_message_at_ms=last_message_at_ms,
+        last_sender=last_sender,
+    )
+    values = record.model_dump()
+    if conn.execute(update(gc).where(gc.c.group_id == group_id).values(**values)).rowcount == 0:
+        conn.execute(insert(gc).values(**values))
+    return record
+
+
+def get_group_chat(conn: Connection, group_id: str) -> GroupChatRow | None:
+    gc = schema.group_chats
+    row = conn.execute(select(gc).where(gc.c.group_id == group_id)).first()
+    return None if row is None else GroupChatRow(**_row_dict(row))
+
+
+def group_chat_for_chat_id(conn: Connection, chat_id: str) -> GroupChatRow | None:
+    gc = schema.group_chats
+    row = conn.execute(select(gc).where(gc.c.chat_id == chat_id)).first()
+    return None if row is None else GroupChatRow(**_row_dict(row))
+
+
+def save_plan_record(conn: Connection, plan_id: str, plan_json: Mapping[str, Any]) -> PlanRecord:
+    """Upsert the serialized ``regulars.bot.plan.Plan`` for ``plan_id`` (the plan is a record)."""
+    pr = schema.plan_records
+    record = PlanRecord(plan_id=plan_id, plan_json=dict(plan_json), updated_at=_now())
+    values = record.model_dump()
+    if conn.execute(update(pr).where(pr.c.plan_id == plan_id).values(**values)).rowcount == 0:
+        conn.execute(insert(pr).values(**values))
+    return record
+
+
+def get_plan_record(conn: Connection, plan_id: str) -> PlanRecord | None:
+    pr = schema.plan_records
+    row = conn.execute(select(pr).where(pr.c.plan_id == plan_id)).first()
+    return None if row is None else PlanRecord(**_row_dict(row))
+
+
+def open_plan_records(conn: Connection) -> list[PlanRecord]:
+    """Every stored plan whose JSON ``outcome`` is ``"open"``. Filtered in Python: the store's
+    ``open_plans`` is called rarely (per ``tick``) and the plan count per tick is small."""
+    pr = schema.plan_records
+    rows = [PlanRecord(**_row_dict(r)) for r in conn.execute(select(pr))]
+    return [r for r in rows if r.plan_json.get("outcome") == "open"]
+
+
+def save_onboarding_state(
+    conn: Connection, user_id: str, state_json: Mapping[str, Any]
+) -> OnboardingStateRow:
+    ob = schema.onboarding_state
+    record = OnboardingStateRow(user_id=user_id, state_json=dict(state_json), updated_at=_now())
+    values = record.model_dump()
+    if conn.execute(update(ob).where(ob.c.user_id == user_id).values(**values)).rowcount == 0:
+        conn.execute(insert(ob).values(**values))
+    return record
+
+
+def get_onboarding_state(conn: Connection, user_id: str) -> OnboardingStateRow | None:
+    ob = schema.onboarding_state
+    row = conn.execute(select(ob).where(ob.c.user_id == user_id)).first()
+    return None if row is None else OnboardingStateRow(**_row_dict(row))
+
+
+def save_morning_after_state(
+    conn: Connection, *, user_id: str, plan_id: str, group_id: str, others: Sequence[str]
+) -> MorningAfterStateRow:
+    ma = schema.morning_after_state
+    record = MorningAfterStateRow(
+        user_id=user_id,
+        plan_id=plan_id,
+        group_id=group_id,
+        others_json=list(others),
+        updated_at=_now(),
+    )
+    values = record.model_dump()
+    if conn.execute(update(ma).where(ma.c.user_id == user_id).values(**values)).rowcount == 0:
+        conn.execute(insert(ma).values(**values))
+    return record
+
+
+def get_morning_after_state(conn: Connection, user_id: str) -> MorningAfterStateRow | None:
+    ma = schema.morning_after_state
+    row = conn.execute(select(ma).where(ma.c.user_id == user_id)).first()
+    return None if row is None else MorningAfterStateRow(**_row_dict(row))
+
+
+def clear_morning_after_state(conn: Connection, user_id: str) -> None:
+    ma = schema.morning_after_state
+    conn.execute(schema.morning_after_state.delete().where(ma.c.user_id == user_id))
+
+
+def put_deposit_hold(
+    conn: Connection,
+    *,
+    plan_id: str,
+    user_id: str,
+    intent_id: str | None,
+    amount_cents: int,
+    credit_cents: int = 0,
+    state: HoldState = "held",
+) -> DepositHoldRow:
+    if state not in HOLD_STATES:
+        raise ValueError(f"state must be one of {HOLD_STATES}, got {state!r}")
+    dh = schema.deposit_holds
+    record = DepositHoldRow(
+        plan_id=plan_id,
+        user_id=user_id,
+        intent_id=intent_id,
+        amount_cents=amount_cents,
+        credit_cents=credit_cents,
+        state=state,
+        updated_at=_now(),
+    )
+    values = record.model_dump()
+    key = and_(dh.c.plan_id == plan_id, dh.c.user_id == user_id)
+    if conn.execute(update(dh).where(key).values(**values)).rowcount == 0:
+        conn.execute(insert(dh).values(**values))
+    return record
+
+
+def deposit_holds_for_plan(conn: Connection, plan_id: str) -> list[DepositHoldRow]:
+    dh = schema.deposit_holds
+    stmt = select(dh).where(dh.c.plan_id == plan_id).order_by(dh.c.user_id)
+    return [DepositHoldRow(**_row_dict(r)) for r in conn.execute(stmt)]

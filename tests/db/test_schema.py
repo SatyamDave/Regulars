@@ -2,10 +2,10 @@ from pathlib import Path
 
 from sqlalchemy import Engine, inspect
 
-from regulars.db.gen_ddl import render_postgres_ddl
+from regulars.db.gen_ddl import render_migration_ddl, render_postgres_ddl
 from regulars.db.schema import metadata
 
-EXPECTED_TABLES = {
+EXPECTED_0001_TABLES = {
     "users",
     "persona_versions",
     "sims",
@@ -22,7 +22,20 @@ EXPECTED_TABLES = {
     "deposit_credits",
 }
 
-MIGRATION = Path(__file__).resolve().parents[2] / "regulars/db/migrations/0001_initial.sql"
+EXPECTED_0002_TABLES = {
+    "handles",
+    "group_chats",
+    "plan_records",
+    "onboarding_state",
+    "morning_after_state",
+    "deposit_holds",
+}
+
+EXPECTED_TABLES = EXPECTED_0001_TABLES | EXPECTED_0002_TABLES
+
+MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "regulars/db/migrations"
+MIGRATION = MIGRATIONS_DIR / "0001_initial.sql"
+MIGRATION_0002 = MIGRATIONS_DIR / "0002_bot_state.sql"
 
 
 def test_schema_creates_on_sqlite(engine: Engine) -> None:
@@ -40,6 +53,13 @@ def test_checked_in_migration_matches_generator() -> None:
     assert MIGRATION.read_text() == render_postgres_ddl(), (
         "regenerate with: uv run python -m regulars.db.gen_ddl > "
         "regulars/db/migrations/0001_initial.sql"
+    )
+
+
+def test_checked_in_migration_0002_matches_generator() -> None:
+    assert MIGRATION_0002.read_text() == render_migration_ddl("0002"), (
+        "regenerate with: uv run python -m regulars.db.gen_ddl --migration 0002 > "
+        "regulars/db/migrations/0002_bot_state.sql"
     )
 
 

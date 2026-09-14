@@ -41,10 +41,16 @@ from regulars.core.persona import PersonaSource
 
 AssemblyMethod = Literal["model", "random"]
 DepositKind = Literal["deposit_hold", "forfeit", "redistributed_credit", "applied"]
+HoldState = Literal["held", "captured", "released"]
 
 ASSEMBLY_METHODS: tuple[str, ...] = get_args(AssemblyMethod)
 PERSONA_SOURCES: tuple[str, ...] = get_args(PersonaSource)
 DEPOSIT_KINDS: tuple[str, ...] = get_args(DepositKind)
+HOLD_STATES: tuple[str, ...] = get_args(HoldState)
+
+# Tables added after the 0001 migration (see regulars/db/migrations/0002_bot_state.sql) are
+# tagged with this marker so `gen_ddl.py`'s default output stays exactly the 0001 tables.
+MIGRATION_0002 = "0002"
 
 # Stable constraint names so the Postgres migration is diffable across regenerations.
 NAMING_CONVENTION = {
@@ -272,3 +278,74 @@ def _create_persona_immutability_trigger(
 ) -> None:
     for statement in PERSONA_IMMUTABLE_DDL.get(connection.dialect.name, ()):
         connection.execute(text(statement))
+
+
+# --- 0002: bot + ledger state ------------------------------------------------------------------
+# Everything the bot runtime (regulars.bot.store.BotStore) and the deposit ledger
+# (regulars.payments.ledger.LedgerStore) need beyond the §1 tables above. Tagged
+# ``info={"migration": MIGRATION_0002}`` so ``gen_ddl.py``'s default output (diffed against
+# 0001_initial.sql in CI) is unaffected; see ``gen_ddl.py --migration 0002``.
+
+handles = Table(
+    "handles",
+    metadata,
+    Column("handle", String(255), primary_key=True),
+    Column("user_id", ID, ForeignKey("users.id"), nullable=False),
+    Column("display_name", String(255), nullable=False),
+    Column("created_at", TIMESTAMP, nullable=False),
+    Index("ix_handles_user_id", "user_id"),
+    info={"migration": MIGRATION_0002},
+)
+
+group_chats = Table(
+    "group_chats",
+    metadata,
+    Column("group_id", ID, ForeignKey("groups.id"), primary_key=True),
+    Column("chat_id", String(255), nullable=False, unique=True),
+    Column("last_message_at_ms", BigInteger, nullable=True),
+    Column("last_sender", ID, ForeignKey("users.id"), nullable=True),
+    info={"migration": MIGRATION_0002},
+)
+
+plan_records = Table(
+    "plan_records",
+    metadata,
+    Column("plan_id", ID, ForeignKey("plans.id"), primary_key=True),
+    Column("plan_json", JSON, nullable=False),
+    Column("updated_at", TIMESTAMP, nullable=False),
+    info={"migration": MIGRATION_0002},
+)
+
+onboarding_state = Table(
+    "onboarding_state",
+    metadata,
+    Column("user_id", ID, ForeignKey("users.id"), primary_key=True),
+    Column("state_json", JSON, nullable=False),
+    Column("updated_at", TIMESTAMP, nullable=False),
+    info={"migration": MIGRATION_0002},
+)
+
+morning_after_state = Table(
+    "morning_after_state",
+    metadata,
+    Column("user_id", ID, ForeignKey("users.id"), primary_key=True),
+    Column("plan_id", ID, ForeignKey("plans.id"), nullable=False),
+    Column("group_id", ID, ForeignKey("groups.id"), nullable=False),
+    Column("others_json", JSON, nullable=False),
+    Column("updated_at", TIMESTAMP, nullable=False),
+    info={"migration": MIGRATION_0002},
+)
+
+deposit_holds = Table(
+    "deposit_holds",
+    metadata,
+    Column("plan_id", ID, ForeignKey("plans.id"), primary_key=True),
+    Column("user_id", ID, ForeignKey("users.id"), primary_key=True),
+    Column("intent_id", String(255), nullable=True),
+    Column("amount_cents", Integer, nullable=False),
+    Column("credit_cents", Integer, nullable=False, default=0),
+    Column("state", String(16), nullable=False),
+    Column("updated_at", TIMESTAMP, nullable=False),
+    CheckConstraint(f"state IN ({_sql_in(HOLD_STATES)})", name="state"),
+    info={"migration": MIGRATION_0002},
+)
