@@ -90,6 +90,26 @@
         ]
       }
     },
+    "/metrics": {
+      "get": {
+        "description": "Text-exposition-format snapshot of the in-process metrics registry.",
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Prometheus metrics",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/webhooks/bluebubbles": {
       "post": {
         "description": "Hands the raw JSON body straight through to the configured `InboundSink`; no parsing happens here (`regulars.features.ingest` and the bot own the BlueBubbles shape). When `BLUEBUBBLES_WEBHOOK_TOKEN` is set, the request must carry the same value in `X-Webhook-Token` (compared with a constant-time equality check); when it is unset the endpoint accepts requests without that header. Never logs the request body: it may carry message text. Handler exceptions propagate as 500s so BlueBubbles retries the delivery.",
