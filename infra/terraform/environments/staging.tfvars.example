@@ -1,0 +1,27 @@
+# Non-secret example values for the staging environment.
+#
+# Copy this file to `staging.tfvars` (gitignored, see ../../../.gitignore) and fill in the
+# non-secret values below, OR pass these same keys as -var flags / TF_VAR_<name> env vars.
+#
+# Everything marked "SECRET" here must NOT be put in this file (or any committed file). Supply
+# secrets only via `TF_VAR_<name>` environment variables or an untracked `*.tfvars` file kept
+# out of git and out of CI logs. See ../README.md "Secrets".
+
+environment           = "staging"
+supabase_project_name = "regulars-staging"
+supabase_region       = "us-east-1"
+railway_project_name  = "regulars-staging"
+github_repo           = "SatyamDave/Regulars"
+
+# --- Required but NOT filled in here (fetch once, after manually creating the Supabase
+#     project; see ../README.md "Known limitations") ---
+# supabase_project_ref = "" # e.g. "abcdefghijklmnop" -- not secret, but project-specific
+
+# --- SECRET: set via TF_VAR_<name> or an untracked staging.tfvars, never here ---
+# supabase_access_token     (SECRET)
+# postgres_password         (SECRET)
+# railway_api_token         (SECRET)
+# stripe_api_key            (SECRET - use Stripe TEST key for staging)
+# stripe_webhook_secret     (SECRET - use Stripe TEST webhook secret for staging)
+# anthropic_api_key         (SECRET)
+# bluebubbles_webhook_token (SECRET)

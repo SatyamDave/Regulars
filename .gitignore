@@ -10,3 +10,12 @@ dist/
 *.wav
 *.m4a
 .claude/
+
+# Terraform (infra/terraform)
+infra/terraform/**/*.tfvars
+infra/terraform/.terraform/
+infra/terraform/**/.terraform/
+*.tfstate
+*.tfstate.*
+# Note: .terraform.lock.hcl is intentionally NOT ignored — it should be committed to pin
+# provider versions once `terraform init` has been run for real.
