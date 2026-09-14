@@ -1,0 +1,188 @@
+{
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "description": "Shape of the JSON body FastAPI's default handler renders for an ``HTTPException``.",
+        "properties": {
+          "detail": {
+            "description": "Human-readable reason the request was rejected.",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "Body returned by ``GET /healthz``.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "description": "Always \"ok\" when the process can serve requests.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "WebhookAckResponse": {
+        "description": "Conceptual acknowledgement shape for a successfully handled webhook.\n\nDocumentation only: both webhook routes actually return an empty ``200``/``204``-style\n``Response`` with no body, so this model never gets serialized at runtime. It is attached as\n``response_model`` so the OpenAPI schema and Swagger UI show integrators what \"success\" means.",
+        "properties": {
+          "received": {
+            "description": "True once the payload has been handed to its sink.",
+            "title": "Received",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "received"
+        ],
+        "title": "WebhookAckResponse",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "description": "Shared secret configured via the BLUEBUBBLES_WEBHOOK_TOKEN environment variable. Compared with a constant-time equality check when a token is configured; if none is configured the endpoint accepts requests without this header.",
+        "in": "header",
+        "name": "X-Webhook-Token",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "Regulars",
+      "url": "https://github.com/SatyamDave/Regulars"
+    },
+    "description": "Regulars simulates the conversation, then checks it against what happened at dinner. This service is the web entrypoint: it receives Stripe payment webhooks and BlueBubbles (iMessage) inbound-message webhooks, and exposes a health check.",
+    "title": "Regulars",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "description": "Returns 200 with a static body whenever the process is up and able to serve requests.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health check",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/webhooks/bluebubbles": {
+      "post": {
+        "description": "Hands the raw JSON body straight through to the configured `InboundSink`; no parsing happens here (`regulars.features.ingest` and the bot own the BlueBubbles shape). When `BLUEBUBBLES_WEBHOOK_TOKEN` is set, the request must carry the same value in `X-Webhook-Token` (compared with a constant-time equality check); when it is unset the endpoint accepts requests without that header. Never logs the request body: it may carry message text. Handler exceptions propagate as 500s so BlueBubbles retries the delivery.",
+        "operationId": "bluebubbles_webhook_webhooks_bluebubbles_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookAckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Body is missing, not JSON, or not a JSON object."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "X-Webhook-Token missing or does not match."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "BlueBubbles inbound-message webhook",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/webhooks/stripe": {
+      "post": {
+        "description": "Verifies the `Stripe-Signature` header against the raw request body with `StripeDeposits.verify_webhook`, then hands the resulting `StripeEvent` to the configured `PaymentEventSink`. Never logs the request body: it may carry card details. Handler exceptions other than a bad signature propagate as 500s so Stripe retries the delivery.",
+        "operationId": "stripe_webhook_webhooks_stripe_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookAckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Missing or invalid Stripe-Signature."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Stripe payment webhook",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Inbound Stripe and BlueBubbles webhooks.",
+      "name": "webhooks"
+    },
+    {
+      "description": "Liveness check.",
+      "name": "health"
+    }
+  ]
+}

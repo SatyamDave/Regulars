@@ -1,4 +1,6 @@
+import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
@@ -12,7 +14,10 @@ from regulars.app import (
 )
 from regulars.payments.collector import PaidEvent, handle_payment_event
 from regulars.payments.stripe_deposits import StripeDeposits
+from scripts.export_openapi import openapi_schema, render
 from tests.payments.fakes import FakeStripeClient, event_json
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SECRET = "whsec_test"
 
@@ -114,3 +119,66 @@ async def test_bluebubbles_webhook_open_when_no_token_configured() -> None:
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as c:
         assert (await c.post("/webhooks/bluebubbles", json={"a": 1})).status_code == 200
+
+
+# --- OpenAPI documentation: response_model/summary/tags must not change wire behavior ---
+
+
+async def test_stripe_webhook_body_and_status_unchanged_by_response_model(
+    http: httpx.AsyncClient,
+) -> None:
+    """Documenting a response_model must not add a body: the route still returns bare 200/empty."""
+    payload = event_json("payment_intent.amount_capturable_updated", "pi_1", "p1", "u1")
+    r = await http.post(
+        "/webhooks/stripe", content=payload, headers={"Stripe-Signature": f"sig:{SECRET}"}
+    )
+    assert r.status_code == 200
+    assert r.content == b""
+
+
+async def test_bluebubbles_webhook_body_and_status_unchanged_by_response_model(
+    http: httpx.AsyncClient,
+) -> None:
+    r = await http.post(
+        "/webhooks/bluebubbles",
+        json={"type": "new-message", "data": {}},
+        headers={"X-Webhook-Token": "bb-token"},
+    )
+    assert r.status_code == 200
+    assert r.content == b""
+
+
+async def test_healthz_body_unchanged_by_response_model(http: httpx.AsyncClient) -> None:
+    r = await http.get("/healthz")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
+async def test_openapi_schema_has_expected_tags(http: httpx.AsyncClient) -> None:
+    r = await http.get("/openapi.json")
+    assert r.status_code == 200
+    schema = r.json()
+    tag_names = {t["name"] for t in schema["tags"]}
+    assert tag_names == {"webhooks", "health"}
+    assert schema["paths"]["/healthz"]["get"]["tags"] == ["health"]
+    assert schema["paths"]["/webhooks/stripe"]["post"]["tags"] == ["webhooks"]
+    assert schema["paths"]["/webhooks/bluebubbles"]["post"]["tags"] == ["webhooks"]
+    assert schema["info"]["title"] == "Regulars"
+
+
+async def test_docs_and_redoc_are_enabled(http: httpx.AsyncClient) -> None:
+    assert (await http.get("/docs")).status_code == 200
+    assert (await http.get("/redoc")).status_code == 200
+
+
+def test_openapi_snapshot_matches_freshly_generated_schema() -> None:
+    """Mirrors regulars/db/gen_ddl.py: openapi.json is a pinned, regenerable snapshot."""
+    committed = (REPO_ROOT / "openapi.json").read_text()
+    assert committed == render(), (
+        "openapi.json is stale; regenerate with: uv run python scripts/export_openapi.py"
+    )
+
+
+def test_openapi_schema_helper_is_json_serializable() -> None:
+    schema = openapi_schema()
+    assert json.dumps(schema)  # no non-serializable values snuck into the schema
