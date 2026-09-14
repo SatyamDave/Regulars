@@ -94,7 +94,8 @@ def response_latencies(
         prev_spoken = turn
         if turn.speaker_id != responder or target is None or target.speaker_id != to:
             continue
-        assert turn.sent_at_ms is not None and target.sent_at_ms is not None
+        if turn.sent_at_ms is None or target.sent_at_ms is None:
+            continue
         gap = turn.sent_at_ms - target.sent_at_ms
         if gap < 0 or gap > MAX_GAP_MS:
             continue
@@ -234,7 +235,8 @@ def extract_real_features(
             features.update(latency_features(transcript, x, y, baseline, tz=tz))
         features[REPLY_WEIGHT] = reply_weight(graph, x, y)
         features[TAPBACK_RATE] = tapback_rate(transcript, x, y)
-        assert set(features) <= set(REAL_ONLY_FEATURES)
+        if not set(features) <= set(REAL_ONLY_FEATURES):
+            raise RuntimeError(f"real extractor emitted non-real keys: {sorted(features)}")
         return features
 
     return one_way(a, b), one_way(b, a)

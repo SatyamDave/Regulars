@@ -80,7 +80,8 @@ class IsotonicCalibrator:
         if (y_hat is None) != (y is None):
             raise ValueError("pass both y_hat and y, or neither (uses the fit data)")
         if y_hat is None or y is None:
-            assert self._y_hat is not None and self._y is not None
+            if self._y_hat is None or self._y is None:
+                raise RuntimeError("calibrator is not fitted")
             return self._y_hat, self._y
         return np.asarray(y_hat, dtype=np.float64), np.asarray(y, dtype=np.float64)
 

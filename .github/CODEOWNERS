@@ -1,0 +1,6 @@
+# Every path requires review from the founder until the team grows.
+*                       @SatyamDave
+# Contracts other subpackages depend on: change with care.
+/regulars/core/         @SatyamDave
+/regulars/db/           @SatyamDave
+/docs/                  @SatyamDave

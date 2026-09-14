@@ -121,7 +121,8 @@ async def extract_pair_features(
         feats = dict(symmetric)
         feats[FOLLOW_UP_RATE] = follow_up_rate_from_labels(turns, labels, x)
         feats[DISCLOSURE_RECIPROCITY] = reciprocity_from_depths(turns, depths, x, y)
-        assert set(feats) == set(SHARED_FEATURES)
+        if set(feats) != set(SHARED_FEATURES):
+            raise RuntimeError(f"extractor emitted wrong key set: {sorted(feats)}")
         return PairFeatures(user_a=x, user_b=y, features=feats)
 
     return directed(a, b), directed(b, a)

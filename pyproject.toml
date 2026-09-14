@@ -34,6 +34,7 @@ dev = [
     "mypy>=1.11",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=7.1.0",
     "ruff>=0.6",
 ]
 
@@ -49,7 +50,14 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+select = ["E", "F", "I", "B", "UP", "SIM", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# Seeded shuffles and retry jitter; nothing here is a security boundary.
+"regulars/assembly/*" = ["S311"]
+"regulars/llm/anthropic_client.py" = ["S311"]
+# Tests assert, use fixed fake secrets, seeded RNGs, literal paths, and spawn the CLI.
+"tests/*" = ["S101", "S105", "S108", "S311", "S603"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -60,3 +68,14 @@ packages = ["regulars"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["regulars"]
+branch = true
+omit = ["regulars/db/gen_ddl.py"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true

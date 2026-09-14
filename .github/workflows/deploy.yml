@@ -1,0 +1,54 @@
+name: Deploy
+
+# Deploys main to Railway after CI and the image build both succeed.
+# No-op until the RAILWAY_TOKEN secret exists, so this is safe to keep on.
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  railway:
+    name: Railway (production)
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Check for deploy credentials
+        id: creds
+        run: |
+          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RAILWAY_TOKEN not set; skipping deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Deploy
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm i -g @railway/cli
+          railway up --service "${{ vars.RAILWAY_SERVICE || 'regulars' }}" --detach
+      - name: Health check
+        if: steps.creds.outputs.configured == 'true' && vars.PRODUCTION_URL != ''
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "${{ vars.PRODUCTION_URL }}/healthz"; then exit 0; fi
+            sleep 6
+          done
+          echo "healthz never came up" && exit 1

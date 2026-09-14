@@ -141,7 +141,8 @@ class LockFlow:
         plan = close_poll(plan, now)
         self.store.save_plan(plan)
         slot = plan.locked_slot
-        assert slot is not None
+        if slot is None:
+            raise RuntimeError(f"close_poll left plan {plan.id} without a winning slot")
         await self.tools.send_message(plan.group_id, render_poll_closed(plan))
         for user in plan.members():
             request = await self.tools.collect_deposit(plan.id, user, plan.stake_cents)
@@ -171,7 +172,8 @@ class LockFlow:
 
     async def _drop(self, plan: Plan, dropped: Sequence[str]) -> BackfillRequest:
         slot = plan.locked_slot
-        assert slot is not None
+        if slot is None:
+            raise RuntimeError(f"cannot drop members from plan {plan.id}: no slot chosen")
         for user in dropped:
             await self.tools.send_message(
                 plan.group_id, voice.DROPPED_DM.format(venue=slot.venue), to_user=user

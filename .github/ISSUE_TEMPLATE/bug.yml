@@ -1,0 +1,23 @@
+name: Bug
+description: Something behaves differently from the spec or from expectation.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Observed vs expected. Include the exact error text if short.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: Spec section
+      placeholder: docs/technical-architecture.md §4
