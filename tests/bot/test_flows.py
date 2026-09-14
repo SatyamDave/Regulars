@@ -129,9 +129,7 @@ async def test_votes_poll_deposits_drop_backfill_lock(
     removal = [a for a in store.audit_for_user("u6") if a.decision_type == "member_removed"]
     assert len(removal) == 1 and removal[0].reason == voice.DROPPED_REASON
     await runtime.process(dm(sam.handle, "why was I removed?"))
-    assert transport.dms_to(sam.handle)[-1].endswith(
-        f"The reason on record: {voice.DROPPED_REASON}"
-    )
+    assert transport.dms_to(sam.handle)[-1].endswith(f"Straight answer: {voice.DROPPED_REASON}")
 
 
 async def test_everyone_pays_locks_without_waiting_24h(

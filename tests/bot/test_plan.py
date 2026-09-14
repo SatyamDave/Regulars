@@ -131,3 +131,34 @@ def test_formatters() -> None:
     assert format_money(2000) == "$20"
     assert format_money(1250) == "$12.50"
     assert format_when(T0) == "Mon Sep 14, 5pm"
+
+
+def test_all_templates_resolve_every_placeholder(slots: list[Slot]) -> None:
+    """Regression net for copy edits (voice.py wording changes freely; placeholders may not).
+
+    Renders every template in this module with sample data and checks no ``{...}`` survives
+    (a dropped or renamed placeholder leaves one behind) and that the concrete values we fed in
+    actually made it into the text.
+    """
+    p = make(slots)
+    proposal = render_proposal(p, NAMES)
+    assert "{" not in proposal and "}" not in proposal
+    assert "Rooh" in proposal and "Besharam" in proposal and "Ettan" in proposal
+    assert "$20" in proposal
+
+    closed = close_poll(p, T0)
+    for u in USERS:
+        closed = mark_paid(mark_deposit_requested(closed, u, f"pi_{u}", T0), u)
+    locked = lock(closed, T0)
+    lock_text = render_lock(locked, NAMES)
+    assert "{" not in lock_text and "}" not in lock_text
+    assert "Rooh" in lock_text
+    assert all(name in lock_text for name in NAMES.values())
+
+    receipt_all_showed = render_receipt(locked, NAMES, attended=USERS, forfeited=[])
+    assert "{" not in receipt_all_showed and "}" not in receipt_all_showed
+    assert "4 invited, 4 showed." in receipt_all_showed
+
+    receipt_forfeit = render_receipt(locked, NAMES, attended=["a", "b"], forfeited=["c"])
+    assert "{" not in receipt_forfeit and "}" not in receipt_forfeit
+    assert "Priya" in receipt_forfeit and "Anika" in receipt_forfeit and "$10" in receipt_forfeit
