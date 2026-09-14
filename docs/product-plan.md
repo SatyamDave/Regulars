@@ -65,6 +65,13 @@ Poll closes in 24h. Bot picks the winner, books it, collects **$20 deposits**. N
 
 Real dinner. Six people. No staff, no conversation cards, no curation. The group owns the night.
 
+*Dinner is the v1 activity, not the thesis.* The mechanism is: a real shared activity that
+produces a rated interaction the next morning. Dinner is the flagship instance because it's cheap,
+weekly-repeatable, and forces six people to actually talk for two hours. Drinks, a hike, a game
+night — anything with the same shape (real time together, a next-day directed rating) works the
+same way once the loop is proven. The product is meeting people and building strong ties; dinner
+is how round one gets tested.
+
 ### The engine
 
 Next morning, the bot privately DMs each person: who would you see again, who was off, was it worth it. Private, so people are honest.
@@ -219,7 +226,7 @@ Four beats, in order:
 
 ## 12. The long game
 
-Nobody owns the **affinity graph**: who actually works with whom, validated by repeated real-world contact and honest post-hoc feedback. It is the only one with ground truth, because every edge gets tested at a dinner table and rated the next morning.
+Nobody owns the **affinity graph**: who actually works with whom, validated by repeated real-world contact and honest post-hoc feedback. It is the only one with ground truth, because every edge gets tested at a real shared activity — a dinner today, whatever the context calls for later — and rated the next morning.
 
 Friendship is the entry point because it is the only place people will honestly tell you who they liked.
 
