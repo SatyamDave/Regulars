@@ -19,19 +19,27 @@ from __future__ import annotations
 BANNED_PHRASES: tuple[str, ...] = (
     "get to know each other",
     "excited",
+    "excited to have you",
     "amazing",
     "can't wait",
+    "thrilled",
+    "delighted",
+    "incredible",
+    "awesome",
+    "game changer",
+    "seamless",
 )
 
 # --- onboarding --------------------------------------------------------------------------------
 
 WELCOME = (
-    "Hi, this is Regulars. I put together small dinner tables of people who are likely to "
-    "actually like each other, then get out of the way."
+    "Hey, this is Regulars. You get put in a group chat with five strangers who actually fit "
+    "you, a bot plans the dinner, and everyone puts down $20. Show up and it comes back, plus "
+    "whatever the no-shows left behind."
 )
 WELCOME_HOW = (
-    "Three voice notes from you, about ninety seconds each, and I have enough to work with. "
-    "Typing is fine too, voice just tells me more."
+    "First I need to know you a little. Three voice notes, about ninety seconds each. Typing "
+    "works too, voice just tells me more. Sound good?"
 )
 INTERVIEW_PROMPTS: tuple[str, str, str] = (
     "First one. Walk me through your last genuinely good weekend.",
@@ -86,7 +94,7 @@ LOCK_FOOTER = "Address and a reminder come the morning of. Nothing to do until t
 RECEIPT_HEADER = "Last night. {venue}, {when}."
 RECEIPT_ATTENDED = "At the table: {names}."
 RECEIPT_ALL_SHOWED = "{count} invited, {count} showed."
-RECEIPT_FORFEITED = "{names} did not make it. {share} each to the rest of you from their deposit."
+RECEIPT_FORFEITED = "{names} did not make it. {share} each to the rest of you."
 RECEIPT_FOOTER = "Next round opens {next_round}."
 
 # --- morning after -----------------------------------------------------------------------------
@@ -106,7 +114,7 @@ MORNING_AFTER_UNCLEAR = (
 # --- DMs outside a flow ------------------------------------------------------------------------
 
 LEGIBILITY_ACK = "Pulling up what I have on you. Correct anything and I will update it."
-REMOVAL_REASON = "You were removed from your table on {when}. The reason on record: {reason}"
+REMOVAL_REASON = "You were dropped from the table on {when}. Straight answer: {reason}"
 NOT_REMOVED = "You have not been removed from anything. You are still on your table."
 DM_FALLBACK = (
     "I am not much of a conversationalist outside of dinner plans. Ask me 'what do you know "
