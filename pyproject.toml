@@ -59,6 +59,8 @@ select = ["E", "F", "I", "B", "UP", "SIM", "S"]
 # Seeded shuffles and retry jitter; nothing here is a security boundary.
 "regulars/assembly/*" = ["S311"]
 "regulars/llm/anthropic_client.py" = ["S311"]
+# Deterministic dev-data generation, seeded from --seed; nothing here is a security boundary.
+"regulars/ops/*" = ["S311"]
 # Tests assert, use fixed fake secrets, seeded RNGs, literal paths, and spawn the CLI.
 "tests/*" = ["S101", "S105", "S108", "S311", "S603"]
 

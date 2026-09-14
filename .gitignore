@@ -10,6 +10,7 @@ dist/
 *.wav
 *.m4a
 .claude/
+*.db
 
 # Terraform (infra/terraform)
 infra/terraform/**/*.tfvars
