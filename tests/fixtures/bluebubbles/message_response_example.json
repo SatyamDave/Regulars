@@ -1,0 +1,63 @@
+{
+  "_source": "BlueBubbles official Postman collection (documenter.getpostman.com/view/765844/UV5RnfwM), saved live example response for 'Chat / Get Chat Messages', fetched 2026-09-14. Captured verbatim, not invented -- see docs/bluebubbles-api-contract.md.",
+  "status": 200,
+  "message": "Success",
+  "data": [
+    {
+      "originalROWID": 132938,
+      "guid": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEE",
+      "text": "Laughed at “Wow”",
+      "handle": {
+        "originalROWID": 115,
+        "messages": [],
+        "chats": [],
+        "address": "xxxxxxx@icloud.com",
+        "country": "US",
+        "uncanonicalizedId": null
+      },
+      "handleId": 115,
+      "otherHandle": 0,
+      "chats": [
+        {
+          "originalROWID": 222,
+          "guid": "iMessage;+;chat1234567890",
+          "participants": [],
+          "messages": [],
+          "style": 43,
+          "chatIdentifier": "chat1234567890",
+          "isArchived": false,
+          "isFiltered": false,
+          "displayName": "BlueBubbles Stuff",
+          "groupId": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEE"
+        }
+      ],
+      "attachments": [],
+      "subject": null,
+      "country": null,
+      "error": 0,
+      "dateCreated": 1633920317533,
+      "dateRead": 1633958966965,
+      "dateDelivered": null,
+      "isFromMe": false,
+      "isDelayed": false,
+      "isAutoReply": false,
+      "isSystemMessage": false,
+      "isServiceMessage": false,
+      "isForward": false,
+      "isArchived": false,
+      "cacheRoomnames": "chat1234567890",
+      "isAudioMessage": false,
+      "hasDdResults": false,
+      "datePlayed": null,
+      "itemType": 0,
+      "groupTitle": null,
+      "groupActionType": 0,
+      "isExpired": false,
+      "balloonBundleId": null,
+      "associatedMessageGuid": "p:0/AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEE",
+      "associatedMessageType": "laugh",
+      "expressiveSendStyleId": null,
+      "timeExpressiveSendStyleId": null
+    }
+  ]
+}

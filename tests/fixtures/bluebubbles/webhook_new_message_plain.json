@@ -1,0 +1,44 @@
+{
+  "_source": "Constructed from confirmed field names/types only (bluebubbles-server source, commit f2e2286: server/types.ts MessageResponse/HandleResponse/ChatResponse; server/index.ts handleNewMessage/WebhookService.dispatch for the {type,data} envelope). No BlueBubbles-published literal webhook JSON example exists publicly at time of writing -- see docs/bluebubbles-api-contract.md.",
+  "type": "new-message",
+  "data": {
+    "originalROWID": 132939,
+    "guid": "11111111-2222-3333-4444-555555555555",
+    "text": "On for Tuesday?",
+    "handle": {
+      "originalROWID": 116,
+      "address": "+14155550100",
+      "service": "iMessage",
+      "country": "US"
+    },
+    "handleId": 116,
+    "otherHandle": 0,
+    "chats": [
+      {
+        "originalROWID": 223,
+        "guid": "iMessage;+;chat1234567890",
+        "style": 43,
+        "chatIdentifier": "chat1234567890",
+        "isArchived": false,
+        "displayName": "Regulars",
+        "groupId": "11111111-0000-0000-0000-000000000000"
+      }
+    ],
+    "attachments": [],
+    "subject": null,
+    "error": 0,
+    "dateCreated": 1757800000000,
+    "dateRead": null,
+    "dateDelivered": null,
+    "isFromMe": false,
+    "isArchived": false,
+    "itemType": 0,
+    "groupTitle": null,
+    "groupActionType": 0,
+    "balloonBundleId": null,
+    "associatedMessageGuid": null,
+    "associatedMessageType": null,
+    "expressiveSendStyleId": null,
+    "threadOriginatorGuid": null
+  }
+}

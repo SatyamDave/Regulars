@@ -28,6 +28,28 @@ _TAPBACK_EMOJI: dict[int, str] = {
     2004: "‼️",  # emphasize
     2005: "❓",  # question
 }
+# BlueBubbles' own ORM entity (bluebubbles-server: databases/imessage/entity/Message.ts) declares
+# ``associatedMessageType`` with a column transformer that turns the DB integer into a word string
+# (e.g. "laugh", "-love") whenever the entity is hydrated normally, and BlueBubbles' own published
+# Postman example shows exactly that. The live-poller code path that actually feeds webhooks
+# bypasses that transformer and assigns the raw integer instead (bluebubbles-server:
+# databases/imessage/entity/decoders/MessageDecoder.ts). Since which one shows up on the wire
+# depends on server internals we don't control, accept both.
+_TAPBACK_TYPE_NAMES: dict[str, int] = {
+    "sticker": 1000,
+    "love": 2000,
+    "like": 2001,
+    "dislike": 2002,
+    "laugh": 2003,
+    "emphasize": 2004,
+    "question": 2005,
+    "-love": 3000,
+    "-like": 3001,
+    "-dislike": 3002,
+    "-laugh": 3003,
+    "-emphasize": 3004,
+    "-question": 3005,
+}
 
 
 class MessageRow(BaseModel):
@@ -102,7 +124,9 @@ def message_row_from_bluebubbles(
 ) -> MessageRow | None:
     """Adapt one raw BlueBubbles message (``/api/v1/message`` shape) to a :class:`MessageRow`.
 
-    Fields read: ``ROWID`` (id), ``text``, ``dateCreated`` (ms epoch), ``handle.address`` (sender;
+    Fields read: ``originalROWID`` (id; BlueBubbles' internal SQLite column is ``ROWID``, but that
+    name never appears in a serialized API/webhook payload), ``text``, ``dateCreated`` (ms epoch),
+    ``handle.address`` (sender;
     ``self_user_id`` when ``isFromMe``), ``threadOriginatorGuid`` (inline reply target),
     ``associatedMessageType`` and ``associatedMessageGuid`` (tapbacks). BlueBubbles references
     other messages by GUID; ``guid_to_id`` resolves those to message ids. Unresolvable references
@@ -124,7 +148,7 @@ def message_row_from_bluebubbles(
     if not user_id:
         return None
     base: dict[str, Any] = {
-        "id": int(payload["ROWID"]),
+        "id": int(payload["originalROWID"]),
         "group_id": group_id,
         "user_id": user_id,
         "sent_at_ms": int(payload["dateCreated"]),
@@ -144,9 +168,13 @@ def message_row_from_bluebubbles(
 
 
 def _associated_type(raw: Any) -> int | None:
-    """``associatedMessageType`` arrives as an int, a numeric string, or 0/None for plain text."""
+    """``associatedMessageType`` arrives as an int, a numeric string, a word string
+    (BlueBubbles' own ``MessageTypeTransformer`` renders it as e.g. ``"laugh"``/``"-love"`` when
+    the server hydrates it through its ORM), or 0/None for plain text."""
     if raw is None:
         return None
+    if isinstance(raw, str) and raw in _TAPBACK_TYPE_NAMES:
+        return _TAPBACK_TYPE_NAMES[raw]
     try:
         value = int(raw)
     except (TypeError, ValueError):
