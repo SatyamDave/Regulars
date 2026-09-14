@@ -3,21 +3,33 @@
 Read `docs/technical-architecture.md` before touching anything. It is the spec; §-references in
 code comments point at it.
 
+**If your session touches patents, prior art, IP strategy, or "is this patentable" —
+read and update `docs/patents/PATENTS.md` first.** It is a living document, not a one-time report;
+see its own Maintenance section for exactly how to update it.
+
 ## Layout
 
 ```
-regulars/core/      shared contracts (Transcript, PersonaSpec, LLMClient, feature registry)
-regulars/db/        schema + repositories (SQLAlchemy Core; SQLite in tests, Postgres/Supabase in prod)
-regulars/persona/   voice interview → PersonaSpec; immutable versions; legibility + corrections
-regulars/features/  feature extraction — ONE code path for sim and real transcripts
-regulars/judge/     v1 linear judge, calibration, SRM decomposition, diagnostics
-regulars/sim/       persona × persona harness, scenarios, anti-sycophancy
-regulars/llm/       LLMClient providers (Anthropic, OpenAI-compatible for Centaur)
-regulars/assembly/  group optimizer (max-min), exploration arm, continuity bonus
-regulars/bot/       agent runtime: 5 tools, Plan object, Transport, audit rows
-regulars/payments/  Stripe manual-capture deposits, credit ledger, webhooks (FastAPI app)
-regulars/eval/      person-grouped CV, clustered SEs, mixed models, week-6 gate report
-tests/              pytest; mirrors package layout
+regulars/core/          shared contracts (Transcript, PersonaSpec, LLMClient, feature registry)
+regulars/db/            schema + repositories (SQLAlchemy Core; SQLite in tests, Postgres/Supabase in prod)
+regulars/persona/       voice interview → PersonaSpec; immutable versions; legibility + corrections
+regulars/features/      feature extraction — ONE code path for sim and real transcripts
+regulars/judge/         v1 linear judge, calibration, SRM decomposition, diagnostics
+regulars/sim/           persona × persona harness, scenarios, anti-sycophancy
+regulars/llm/           LLMClient providers (Anthropic, OpenAI-compatible for Centaur)
+regulars/assembly/      group optimizer (max-min), exploration arm, continuity bonus
+regulars/bot/           agent runtime: 5 tools, Plan object, Transport, audit rows
+regulars/payments/      Stripe manual-capture deposits, credit ledger, webhooks
+regulars/eval/          person-grouped CV, clustered SEs, mixed models, week-6 gate report
+regulars/observability/ structured logging, request middleware, Prometheus metrics
+regulars/privacy/       GDPR/CCPA export + anonymize/hard delete
+regulars/ops/           founder-run scripts: audit CLI, known-pairs CLI, seed data, benchmarks
+regulars/app.py         FastAPI web entrypoint (webhooks, health, metrics, privacy)
+regulars/wiring.py      build_system(): wires all subpackages into one System
+regulars/pipeline.py    offline batch orchestration (score_candidates, assemble_and_open, post_dinner)
+docs/patents/           patentability research; PATENTS.md is the living index — see above
+infra/terraform/        Supabase settings + Railway service (project creation is manual)
+tests/                  pytest; mirrors package layout
 ```
 
 ## Rules
